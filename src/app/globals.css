@@ -1,0 +1,175 @@
+@import "tailwindcss";
+@variant dark (&:where(.dark, .dark *));
+
+/* ============================================================
+   Concierge AI — Design System
+   Inspired by: Clinify, Stripe, Linear
+   Palette: Violeta (#7C3AED) — creatividad, lujo, confianza
+   ============================================================ */
+
+:root {
+  /* Brand */
+  --brand:        #7C3AED;
+  --brand-light:  #A78BFA;
+  --brand-dark:   #6D28D9;
+  --brand-subtle: #F5F3FF;
+
+  /* Neutrals */
+  --background:   #f8fafc;
+  --surface:      #ffffff;
+  --surface-2:    #f1f5f9;
+  --surface-3:    #e2e8f0;
+  --border:       #e2e8f0;
+  --border-2:     #cbd5e1;
+
+  /* Text */
+  --foreground:   #0f172a;
+  --muted:        #64748b;
+  --subtle:       #94a3b8;
+
+  /* Semantic */
+  --success:      #10b981;
+  --success-bg:   #f0fdf4;
+  --warning:      #f59e0b;
+  --warning-bg:   #fffbeb;
+  --danger:       #ef4444;
+  --danger-bg:    #fef2f2;
+  --info:         #06b6d4;
+  --info-bg:      #ecfeff;
+
+  /* Shadows */
+  --shadow-xs:    0 1px 2px rgba(0,0,0,.04);
+  --shadow-sm:    0 1px 4px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-md:    0 4px 12px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04);
+  --shadow-lg:    0 8px 24px rgba(0,0,0,.10), 0 4px 8px rgba(0,0,0,.06);
+
+  /* Radius */
+  --radius-sm:    6px;
+  --radius-md:    10px;
+  --radius-lg:    14px;
+  --radius-xl:    18px;
+  --radius-full:  9999px;
+
+  /* Layout */
+  --sidebar-width: 240px;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --background:   #0d1117;
+    --surface:      #161b22;
+    --surface-2:    #1c2128;
+    --surface-3:    #21262d;
+    --border:       #30363d;
+    --border-2:     #3d444d;
+    --foreground:   #e6edf3;
+    --muted:        #8b949e;
+    --subtle:       #656d76;
+    --brand-subtle: #1a0f2e;
+    --success-bg:   #0d2b1e;
+    --warning-bg:   #2b1f06;
+    --danger-bg:    #2b0f0f;
+    --info-bg:      #062428;
+  }
+}
+
+.dark {
+  --background:   #0d1117;
+  --surface:      #161b22;
+  --surface-2:    #1c2128;
+  --surface-3:    #21262d;
+  --border:       #30363d;
+  --border-2:     #3d444d;
+  --foreground:   #e6edf3;
+  --muted:        #8b949e;
+  --subtle:       #656d76;
+  --brand-subtle: #1a0f2e;
+  --success-bg:   #0d2b1e;
+  --warning-bg:   #2b1f06;
+  --danger-bg:    #2b0f0f;
+  --info-bg:      #062428;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+}
+
+/* ── Base ────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: var(--radius-full); }
+::-webkit-scrollbar-thumb:hover { background: var(--border-2); }
+
+/* ── Utilities ───────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.card-hover {
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.card-hover:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.status-pending    { background: var(--warning-bg); color: #92400e; }
+.status-confirmed  { background: var(--success-bg); color: #065f46; }
+.status-paid       { background: var(--info-bg);    color: #0e7490; }
+.status-shipped    { background: var(--brand-subtle); color: var(--brand); }
+.status-delivered  { background: var(--success-bg); color: #065f46; }
+.status-cancelled  { background: var(--danger-bg);  color: #991b1b; }
+.status-preparing  { background: var(--brand-subtle); color: var(--brand); }
+
+.dark .status-pending  { color: #fcd34d; }
+.dark .status-confirmed { color: #6ee7b7; }
+.dark .status-cancelled { color: #fca5a5; }
+.dark .status-paid     { color: #67e8f9; }
+
+/* ── Animations ─────────────────────────────────────────── */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.animate-fade-in        { animation: fade-in 0.2s ease forwards; }
+.animate-slide-in-right { animation: slide-in-right 0.2s ease forwards; }
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
