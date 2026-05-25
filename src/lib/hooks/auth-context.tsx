@@ -53,14 +53,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [loading, setLoading]   = useState(true)
   const supabase = createClient()
+  const isDevMode = typeof window !== 'undefined' && localStorage.getItem('ca-dev-mode') === 'true'
 
-  // Dev mode: skip Supabase auth
-  useEffect(() => {
-    if (typeof window !== 'undefined' && localStorage.getItem('ca-dev-mode') === 'true') {
-      setAuthUser(DEV_AUTH_USER)
-      setLoading(false)
-    }
-  }, [])
+  // Dev mode: skip Supabase auth entirely
+  if (isDevMode && !authUser) {
+    setAuthUser(DEV_AUTH_USER)
+    setLoading(false)
+  }
 
   const loadUserData = useCallback(async (user: User) => {
     const profileRes = await supabase.from('profiles').select('*').eq('id', user.id).single()
@@ -91,18 +90,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [supabase])
 
   useEffect(() => {
+    if (isDevMode) return
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) loadUserData(session.user).finally(() => setLoading(false))
       else setLoading(false)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (isDevMode) return
       if (session?.user) loadUserData(session.user)
       else setAuthUser(null)
     })
 
     return () => subscription.unsubscribe()
-  }, [loadUserData, supabase.auth])
+  }, [loadUserData, supabase.auth, isDevMode])
 
   const setCurrentStore = useCallback((storeId: string) => {
     if (typeof window !== 'undefined') localStorage.setItem('ca-current-store', storeId)
