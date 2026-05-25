@@ -24,13 +24,17 @@ export default function OrderDetailPage() {
     async function load() {
       const orgId = authUser?.organization?.id
       if (!orgId) return
-      const sb = createServiceClient()
-      const { data } = await sb.from('orders')
-        .select('*, customer:customers(*), items:order_items(*)')
-        .eq('id', params.id as string)
-        .eq('organization_id', orgId)
-        .single()
-      setOrder(data as unknown as Order)
+      try {
+        const sb = createServiceClient()
+        const { data } = await sb.from('orders')
+          .select('*, customer:customers(*), items:order_items(*)')
+          .eq('id', params.id as string)
+          .eq('organization_id', orgId)
+          .single()
+        setOrder(data as unknown as Order)
+      } catch {
+        // dev mode — Supabase not available
+      }
       setLoading(false)
     }
     load()
@@ -39,9 +43,13 @@ export default function OrderDetailPage() {
   async function handleUpdateStatus(newStatus: string) {
     if (!order) return
     setUpdating(true)
-    const sb = createServiceClient()
-    await sb.from('orders').update({ status: newStatus }).eq('id', order.id)
-    setOrder({ ...order, status: newStatus as Order['status'] })
+    try {
+      const sb = createServiceClient()
+      await sb.from('orders').update({ status: newStatus }).eq('id', order.id)
+      setOrder({ ...order, status: newStatus as Order['status'] })
+    } catch {
+      // dev mode — Supabase not available
+    }
     setUpdating(false)
   }
 

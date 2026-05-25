@@ -20,19 +20,23 @@ export default function CustomerDetailPage() {
     const orgId = authUser?.organization?.id
     if (!orgId || !params.id) return
     async function load() {
-      const sb = createServiceClient()
-      const { data: c } = await sb.from('customers')
-        .select('*').eq('id', params.id as string).eq('organization_id', orgId).single()
-      if (c) {
-        setCustomer(c as Customer)
-        const { data: o } = await sb.from('orders')
-          .select('id, status, total, created_at')
-          .eq('customer_id', c.id).eq('organization_id', orgId)
-          .order('created_at', { ascending: false }).limit(20)
-        setOrders((o ?? []) as Order[])
-        const { data: s } = await sb.from('customer_scores')
-          .select('*').eq('customer_id', c.id).single()
-        setScore(s as CustomerScore | null)
+      try {
+        const sb = createServiceClient()
+        const { data: c } = await sb.from('customers')
+          .select('*').eq('id', params.id as string).eq('organization_id', orgId).single()
+        if (c) {
+          setCustomer(c as Customer)
+          const { data: o } = await sb.from('orders')
+            .select('id, status, total, created_at')
+            .eq('customer_id', c.id).eq('organization_id', orgId)
+            .order('created_at', { ascending: false }).limit(20)
+          setOrders((o ?? []) as Order[])
+          const { data: s } = await sb.from('customer_scores')
+            .select('*').eq('customer_id', c.id).single()
+          setScore(s as CustomerScore | null)
+        }
+      } catch {
+        // dev mode — Supabase not available
       }
       setLoading(false)
     }

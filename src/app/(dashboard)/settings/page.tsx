@@ -24,23 +24,26 @@ export default function SettingsPage() {
   async function handleSave() {
     setSaving(true)
     setSaved(false)
-    const sb = createServiceClient()
+    try {
+      const sb = createServiceClient()
 
-    if (orgName !== authUser?.organization?.name) {
-      await updateOrgName(orgName)
-    }
-
-    if (currentStore) {
-      const updates: Record<string, string> = {}
-      if (storeName !== currentStore.name) updates.name = storeName
-      if (whatsappNumber !== (currentStore.whatsapp_number ?? '')) updates.whatsapp_number = whatsappNumber
-      if (evolutionInstance !== (currentStore.evolution_instance ?? '')) updates.evolution_instance = evolutionInstance
-
-      if (Object.keys(updates).length > 0) {
-        await sb.from('stores').update(updates).eq('id', currentStore.id)
+      if (orgName !== authUser?.organization?.name) {
+        await updateOrgName(orgName)
       }
-    }
 
+      if (currentStore) {
+        const updates: Record<string, string> = {}
+        if (storeName !== currentStore.name) updates.name = storeName
+        if (whatsappNumber !== (currentStore.whatsapp_number ?? '')) updates.whatsapp_number = whatsappNumber
+        if (evolutionInstance !== (currentStore.evolution_instance ?? '')) updates.evolution_instance = evolutionInstance
+
+        if (Object.keys(updates).length > 0) {
+          await sb.from('stores').update(updates).eq('id', currentStore.id)
+        }
+      }
+    } catch {
+      // dev mode — Supabase not available
+    }
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 3000)

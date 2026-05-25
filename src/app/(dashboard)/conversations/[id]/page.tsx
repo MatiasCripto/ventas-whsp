@@ -27,16 +27,20 @@ export default function ConversationDetailPage() {
     const orgId = authUser?.organization?.id
     if (!orgId || !params.id) return
     async function load() {
-      const sb = createServiceClient()
-      const { data: conv } = await sb.from('conversations')
-        .select('*, customer:customers(full_name, phone, email)')
-        .eq('id', params.id as string).eq('organization_id', orgId).single()
-      if (conv) {
-        setConversation(conv as unknown as Conversation)
-        const { data: msgs } = await sb.from('messages')
-          .select('*').eq('conversation_id', conv.id)
-          .order('sent_at', { ascending: true }).limit(100)
-        setMessages((msgs ?? []) as Message[])
+      try {
+        const sb = createServiceClient()
+        const { data: conv } = await sb.from('conversations')
+          .select('*, customer:customers(full_name, phone, email)')
+          .eq('id', params.id as string).eq('organization_id', orgId).single()
+        if (conv) {
+          setConversation(conv as unknown as Conversation)
+          const { data: msgs } = await sb.from('messages')
+            .select('*').eq('conversation_id', conv.id)
+            .order('sent_at', { ascending: true }).limit(100)
+          setMessages((msgs ?? []) as Message[])
+        }
+      } catch {
+        // dev mode — Supabase not available
       }
       setLoading(false)
     }

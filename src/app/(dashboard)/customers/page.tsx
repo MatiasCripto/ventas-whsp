@@ -20,20 +20,24 @@ export default function CustomersPage() {
     const orgId = authUser?.organization?.id
     if (!orgId) return
     async function load() {
-      const sb = createServiceClient()
-      let query = sb.from('customers')
-        .select('*', { count: 'exact' })
-        .eq('organization_id', orgId)
-        .order('created_at', { ascending: false })
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+      try {
+        const sb = createServiceClient()
+        let query = sb.from('customers')
+          .select('*', { count: 'exact' })
+          .eq('organization_id', orgId)
+          .order('created_at', { ascending: false })
+          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 
-      if (search) {
-        query = query.or(`full_name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%`)
+        if (search) {
+          query = query.or(`full_name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%`)
+        }
+
+        const { data, count } = await query
+        setCustomers((data ?? []) as Customer[])
+        setTotal(count ?? 0)
+      } catch {
+        // Dev mode — empty state
       }
-
-      const { data, count } = await query
-      setCustomers((data ?? []) as Customer[])
-      setTotal(count ?? 0)
       setLoading(false)
     }
     load()

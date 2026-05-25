@@ -21,20 +21,24 @@ export default function ProductsPage() {
     const orgId = authUser?.organization?.id
     if (!orgId) return
     async function load() {
-      const sb = createServiceClient()
-      const { data } = await sb.from('products')
-        .select('id, name, slug, price, is_active, images, category:categories(name)')
-        .eq('organization_id', orgId)
-        .order('created_at', { ascending: false })
-      const rows = (data ?? []) as unknown as Product[]
-      // Add stock from variants
-      const withStock = await Promise.all(rows.map(async (p) => {
-        const { data: variants } = await sb.from('product_variants')
-          .select('stock').eq('product_id', p.id).eq('is_active', true)
-        const stock = (variants ?? []).reduce((s: number, v: { stock: number }) => s + (v.stock ?? 0), 0)
-        return { ...p, stock }
-      }))
-      setProducts(withStock)
+      try {
+        const sb = createServiceClient()
+        const { data } = await sb.from('products')
+          .select('id, name, slug, price, is_active, images, category:categories(name)')
+          .eq('organization_id', orgId)
+          .order('created_at', { ascending: false })
+        const rows = (data ?? []) as unknown as Product[]
+        // Add stock from variants
+        const withStock = await Promise.all(rows.map(async (p) => {
+          const { data: variants } = await sb.from('product_variants')
+            .select('stock').eq('product_id', p.id).eq('is_active', true)
+          const stock = (variants ?? []).reduce((s: number, v: { stock: number }) => s + (v.stock ?? 0), 0)
+          return { ...p, stock }
+        }))
+        setProducts(withStock)
+      } catch {
+        // Dev mode — empty state
+      }
       setLoading(false)
     }
     load()

@@ -20,9 +20,15 @@ export default function NewProductPage() {
   useEffect(() => {
     const orgId = authUser?.organization?.id
     if (!orgId) return
-    createServiceClient().from('categories')
-      .select('id, name').eq('organization_id', orgId)
-      .then(({ data }) => setCategories((data ?? []) as Category[]))
+    ;(async () => {
+      try {
+        const sb = createServiceClient()
+        const { data } = await sb.from('categories').select('id, name').eq('organization_id', orgId)
+        setCategories((data ?? []) as Category[])
+      } catch {
+        setCategories([])
+      }
+    })()
   }, [authUser])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -31,24 +37,29 @@ export default function NewProductPage() {
     if (!orgId) return
     setSaving(true)
 
-    const sb = createServiceClient()
-    const slug = form.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
-    const { data, error } = await sb.from('products').insert({
-      organization_id: orgId,
-      name: form.name,
-      slug,
-      description: form.description || null,
-      price: Number(form.price),
-      category_id: form.category_id || null,
-      tags: form.tags ? form.tags.split(',').map(t => t.trim()) : [],
-      images: form.images ? form.images.split('\n').map(i => i.trim()).filter(Boolean) : [],
-      is_active: form.is_active,
-      featured: form.featured,
-    }).select('id').single()
+    try {
+      const sb = createServiceClient()
+      const slug = form.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+      const { data, error } = await sb.from('products').insert({
+        organization_id: orgId,
+        name: form.name,
+        slug,
+        description: form.description || null,
+        price: Number(form.price),
+        category_id: form.category_id || null,
+        tags: form.tags ? form.tags.split(',').map(t => t.trim()) : [],
+        images: form.images ? form.images.split('\n').map(i => i.trim()).filter(Boolean) : [],
+        is_active: form.is_active,
+        featured: form.featured,
+      }).select('id').single()
 
-    setSaving(false)
-    if (error) return alert('Error al crear: ' + error.message)
-    if (data) router.push(`/products/${data.id}`)
+      setSaving(false)
+      if (error) return alert('Error al crear: ' + error.message)
+      if (data) router.push(`/products/${data.id}`)
+    } catch {
+      setSaving(false)
+      alert('Error al crear producto (dev mode: Supabase no disponible)')
+    }
   }
 
   return (

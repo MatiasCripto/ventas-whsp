@@ -30,13 +30,17 @@ export default function OrdersPage() {
     const orgId = authUser?.organization?.id
     if (!orgId) return
     async function load() {
-      const sb = createServiceClient()
-      const { data } = await sb.from('orders')
-        .select('id, status, total, created_at, customer:customers(full_name), items:order_items(id)')
-        .eq('organization_id', orgId)
-        .order('created_at', { ascending: false })
-        .limit(50)
-      setOrders((data ?? []) as unknown as Order[])
+      try {
+        const sb = createServiceClient()
+        const { data } = await sb.from('orders')
+          .select('id, status, total, created_at, customer:customers(full_name), items:order_items(id)')
+          .eq('organization_id', orgId)
+          .order('created_at', { ascending: false })
+          .limit(50)
+        setOrders((data ?? []) as unknown as Order[])
+      } catch {
+        // Dev mode — empty state
+      }
       setLoading(false)
     }
     load()

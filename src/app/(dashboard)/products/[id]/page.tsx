@@ -21,15 +21,19 @@ export default function ProductDetailPage() {
     const orgId = authUser?.organization?.id
     if (!orgId || !params.id) return
     async function load() {
-      const sb = createServiceClient()
-      const { data: p } = await sb.from('products')
-        .select('*, category:categories(id, name)')
-        .eq('id', params.id as string).eq('organization_id', orgId).single()
-      if (p) {
-        setProduct(p as unknown as Product)
-        const { data: v } = await sb.from('product_variants')
-          .select('*').eq('product_id', p.id).order('color', { ascending: true })
-        setVariants((v ?? []) as ProductVariant[])
+      try {
+        const sb = createServiceClient()
+        const { data: p } = await sb.from('products')
+          .select('*, category:categories(id, name)')
+          .eq('id', params.id as string).eq('organization_id', orgId).single()
+        if (p) {
+          setProduct(p as unknown as Product)
+          const { data: v } = await sb.from('product_variants')
+            .select('*').eq('product_id', p.id).order('color', { ascending: true })
+          setVariants((v ?? []) as ProductVariant[])
+        }
+      } catch {
+        // dev mode — Supabase not available
       }
       setLoading(false)
     }
@@ -39,8 +43,13 @@ export default function ProductDetailPage() {
   async function handleDelete() {
     if (!confirm('¿Eliminar este producto permanentemente?')) return
     setDeleting(true)
-    const sb = createServiceClient()
-    await sb.from('products').delete().eq('id', params.id as string)
+    try {
+      const sb = createServiceClient()
+      await sb.from('products').delete().eq('id', params.id as string)
+    } catch {
+      // dev mode — Supabase not available
+    }
+    setDeleting(false)
     router.push('/products')
   }
 

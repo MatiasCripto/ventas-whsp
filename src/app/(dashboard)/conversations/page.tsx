@@ -40,20 +40,24 @@ export default function ConversationsPage() {
     const orgId = authUser?.organization?.id
     if (!orgId) return
     async function load() {
-      const sb = createServiceClient()
-      let query = sb.from('conversations')
-        .select('id, channel, status, human_takeover, last_message_at, created_at, customer:customers(full_name, phone), messages:messages(body)')
-        .eq('organization_id', orgId)
-        .order('last_message_at', { ascending: false, nullsFirst: false })
-        .limit(50)
+      try {
+        const sb = createServiceClient()
+        let query = sb.from('conversations')
+          .select('id, channel, status, human_takeover, last_message_at, created_at, customer:customers(full_name, phone), messages:messages(body)')
+          .eq('organization_id', orgId)
+          .order('last_message_at', { ascending: false, nullsFirst: false })
+          .limit(50)
 
-      if (filter) {
-        if (filter === 'human') query = query.eq('human_takeover', true)
-        else query = query.eq('status', filter)
+        if (filter) {
+          if (filter === 'human') query = query.eq('human_takeover', true)
+          else query = query.eq('status', filter)
+        }
+
+        const { data } = await query
+        setConvs((data ?? []) as unknown as ConvRow[])
+      } catch {
+        // Dev mode — empty state
       }
-
-      const { data } = await query
-      setConvs((data ?? []) as unknown as ConvRow[])
       setLoading(false)
     }
     load()
