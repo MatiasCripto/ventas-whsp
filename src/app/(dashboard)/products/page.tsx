@@ -2,13 +2,14 @@
 
 import { useAuthContext } from '@/lib/hooks/auth-context'
 import { useEffect, useState } from 'react'
-import { createServiceClient } from '@/lib/supabase/service'
+import { createClient } from '@/lib/supabase/client'
 import { Plus, Search } from 'lucide-react'
 
 interface Product {
   id: string; name: string; slug: string; price: number
   is_active: boolean; stock: number; images: string[]
   category?: { name: string } | null
+  low_stock_threshold: number; lowStockCount: number
 }
 
 export default function ProductsPage() {
@@ -22,18 +23,21 @@ export default function ProductsPage() {
     if (!orgId) return
     async function load() {
       try {
-        const sb = createServiceClient()
+        const sb = createClient()
         const { data } = await sb.from('products')
-          .select('id, name, slug, price, is_active, images, category:categories(name)')
+          .select('id, name, slug, price, is_active, images, low_stock_threshold, category:categories(name)')
           .eq('organization_id', orgId)
           .order('created_at', { ascending: false })
         const rows = (data ?? []) as unknown as Product[]
-        // Add stock from variants
+        // Add stock from variants + low stock count
         const withStock = await Promise.all(rows.map(async (p) => {
           const { data: variants } = await sb.from('product_variants')
-            .select('stock').eq('product_id', p.id).eq('is_active', true)
-          const stock = (variants ?? []).reduce((s: number, v: { stock: number }) => s + (v.stock ?? 0), 0)
-          return { ...p, stock }
+            .select('stock, is_active').eq('product_id', p.id)
+          const activeVariants = (variants ?? []).filter(v => v.is_active)
+          const stock = activeVariants.reduce((s: number, v: { stock: number }) => s + (v.stock ?? 0), 0)
+          const threshold = p.low_stock_threshold ?? 5
+          const lowStockCount = activeVariants.filter(v => v.stock <= threshold).length
+          return { ...p, stock, lowStockCount }
         }))
         setProducts(withStock)
       } catch {
@@ -103,6 +107,12 @@ export default function ProductsPage() {
                   <span className="text-xs" style={{ color: 'var(--muted)' }}>
                     Stock: {p.stock}
                   </span>
+                  {p.lowStockCount > 0 && (
+                    <span className="text-xs px-1.5 py-0.5 rounded text-red-700 font-medium"
+                      style={{ background: '#fef2f2' }}>
+                      ⚠ {p.lowStockCount}
+                    </span>
+                  )}
                 </div>
               </div>
             </a>

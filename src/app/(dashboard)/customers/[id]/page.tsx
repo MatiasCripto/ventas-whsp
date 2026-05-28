@@ -3,7 +3,7 @@
 import { useAuthContext } from '@/lib/hooks/auth-context'
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { createServiceClient } from '@/lib/supabase/service'
+import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Phone, Mail, MapPin, ShoppingBag, DollarSign, Clock } from 'lucide-react'
 import { formatCurrency, formatDate, formatRelative, getRfmConfig } from '@/lib/utils/formatters'
 import type { Customer, Order, CustomerScore } from '@/lib/types'
@@ -21,7 +21,7 @@ export default function CustomerDetailPage() {
     if (!orgId || !params.id) return
     async function load() {
       try {
-        const sb = createServiceClient()
+        const sb = createClient()
         const { data: c } = await sb.from('customers')
           .select('*').eq('id', params.id as string).eq('organization_id', orgId).single()
         if (c) {

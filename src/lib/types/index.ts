@@ -30,6 +30,7 @@ export interface Store {
   id: string
   organization_id: string
   name: string
+  logo_url: string | null
   address: string | null
   phone: string | null
   whatsapp_number: string | null
@@ -42,8 +43,8 @@ export interface Store {
 
 // ── Commerce Types ─────────────────────────────────────────────
 
-export type OrderStatus = 'pending' | 'confirmed' | 'paid' | 'preparing' | 'shipped' | 'delivered' | 'cancelled'
-export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded'
+export type OrderStatus = 'pending' | 'awaiting_payment' | 'payment_under_review' | 'payment_confirmed' | 'payment_rejected' | 'preparing' | 'shipped' | 'delivered' | 'completed' | 'cancelled' | 'refunded' | 'expired'
+export type PaymentStatus = 'pending' | 'awaiting' | 'under_review' | 'confirmed' | 'paid' | 'failed' | 'refunded'
 export type ConversationChannel = 'whatsapp' | 'instagram' | 'web'
 export type ConversationStatus = 'open' | 'closed' | 'bot' | 'human'
 export type InventoryMovementType = 'in' | 'out' | 'adjustment'
@@ -149,6 +150,62 @@ export interface OrderItem {
   total: number
 }
 
+export interface StorePaymentSettings {
+  id: string
+  organization_id: string
+  store_id: string | null
+  bank_name: string | null
+  account_holder: string | null
+  alias: string | null
+  cvu: string | null
+  payment_notes: string | null
+  accepts_cash_on_delivery: boolean
+  accepts_pickup_payment: boolean
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface PaymentProof {
+  id: string
+  organization_id: string
+  store_id: string | null
+  order_id: string
+  customer_id: string
+  image_url: string
+  status: 'pending' | 'approved' | 'rejected'
+  reviewed_by: string | null
+  reviewed_at: string | null
+  notes: string | null
+  review_note: string | null
+  uploaded_at: string
+  extracted_amount: number | null
+  extracted_alias: string | null
+  extracted_date: string | null
+  extracted_bank: string | null
+  extracted_holder: string | null
+  ocr_confidence: number | null
+  ocr_raw_text: string | null
+  ocr_processed_at: string | null
+}
+
+export interface PaymentAccount {
+  id: string
+  organization_id: string
+  bank_name: string
+  account_holder: string
+  alias: string | null
+  cvu: string | null
+  payment_method: string
+  currency: string
+  priority: number
+  instructions: string | null
+  is_default: boolean
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface Conversation {
   id: string
   organization_id: string
@@ -234,6 +291,25 @@ export interface CustomerScore {
 export type RfmSegment = 'champion' | 'loyal' | 'at_risk' | 'new_customer' | 'dormant' | 'lost'
 export type ChurnRisk = 'low' | 'medium' | 'high' | 'churned'
 
+export type OrderEventType =
+  | 'created' | 'stock_reserved' | 'payment_requested'
+  | 'proof_received' | 'payment_approved' | 'payment_rejected'
+  | 'preparing' | 'shipped' | 'delivered' | 'completed'
+  | 'cancelled' | 'expired' | 'refunded'
+  | 'item_added' | 'item_removed' | 'quantity_modified' | 'note_added'
+
+export type OrderEventActorType = 'system' | 'admin' | 'customer' | 'ai'
+
+export interface OrderEvent {
+  id: string
+  order_id: string
+  type: OrderEventType
+  actor_type: OrderEventActorType
+  actor_id: string | null
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
 export interface AnalyticsDaily {
   id: string
   organization_id: string
@@ -248,4 +324,17 @@ export interface AnalyticsDaily {
   top_categories: Record<string, unknown>
   conversion_rate: number
   abandoned_carts: number
+}
+
+export interface Notification {
+  id: string
+  organization_id: string
+  type: string
+  title: string
+  description: string | null
+  read: boolean
+  entity_type: string | null
+  entity_id: string | null
+  metadata: Record<string, unknown>
+  created_at: string
 }

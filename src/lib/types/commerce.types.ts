@@ -64,7 +64,7 @@ export interface CommerceProduct {
   sizes: string[]
   stock: number
   images: string[]
-  category: string
+  category: string | null
   brand: string | null
   tags: string[]
 }

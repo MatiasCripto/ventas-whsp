@@ -1,13 +1,15 @@
 'use client'
 
 import { useAuthContext } from '@/lib/hooks/auth-context'
+import { useNotifications } from '@/lib/hooks/use-notifications'
 import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Package, ShoppingCart, Users,
   MessageSquare, BarChart3, Settings, Zap,
-  Menu, X, ChevronDown,
+  Menu, Sun, Moon, Bell,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
+import { useTheme } from 'next-themes'
 
 const NAV_ITEMS = [
   { label: 'Dashboard',   href: '/overview',       icon: LayoutDashboard },
@@ -15,6 +17,7 @@ const NAV_ITEMS = [
   { label: 'Pedidos',     href: '/orders',         icon: ShoppingCart },
   { label: 'Clientes',    href: '/customers',      icon: Users },
   { label: 'Conversaciones', href: '/conversations', icon: MessageSquare },
+  { label: 'WhatsApp',    href: '/whatsapp',     icon: MessageSquare },
   { label: 'Analytics',   href: '/analytics',      icon: BarChart3 },
   { label: 'Automatizaciones', href: '/automations', icon: Zap },
   { label: 'Configuración', href: '/settings',     icon: Settings },
@@ -25,6 +28,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter()
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { theme, setTheme } = useTheme()
+  const [mounted, setMounted] = useState(false)
+  const { unreadCount } = useNotifications({ organizationId: authUser?.organization?.id ?? null })
+  useEffect(() => setMounted(true), [])
 
   useEffect(() => {
     if (!authUser && !loading) {
@@ -50,10 +57,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       >
         {/* Brand */}
         <div className="flex items-center gap-3 px-5 h-14 border-b shrink-0" style={{ borderColor: 'var(--border)' }}>
-          <div className="w-7 h-7 rounded-[var(--radius-sm)] flex items-center justify-center text-white font-bold text-sm" style={{ background: 'var(--brand)' }}>
-            C
-          </div>
-          <span className="font-semibold text-sm">Concierge AI</span>
+          {currentStore?.logo_url ? (
+            <img src={currentStore.logo_url} alt="" className="w-7 h-7 rounded-[var(--radius-sm)] object-cover" />
+          ) : (
+            <div className="w-7 h-7 rounded-[var(--radius-sm)] flex items-center justify-center text-white font-bold text-sm shrink-0" style={{ background: 'var(--brand)' }}>
+              {currentStore?.name?.charAt(0)?.toUpperCase() ?? 'T'}
+            </div>
+          )}
+          <span className="font-semibold text-sm truncate">{currentStore?.name ?? 'Tienda'}</span>
         </div>
 
         {/* Store selector */}
@@ -108,18 +119,49 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
             <button onClick={signOut} className="text-xs" style={{ color: 'var(--muted)' }}>Salir</button>
           </div>
+          {/* Theme toggle */}
+          <div className="flex items-center justify-center gap-1 px-3 pt-2">
+            {mounted && (
+              <>
+                <button onClick={() => setTheme('light')}
+                  className={`p-1.5 rounded-[var(--radius-sm)] transition-colors ${theme === 'light' ? '' : 'opacity-50 hover:opacity-100'}`}
+                  style={{ background: theme === 'light' ? 'var(--surface-2)' : 'transparent', color: 'var(--muted)' }}
+                  title="Modo claro"
+                >
+                  <Sun size={14} />
+                </button>
+                <button onClick={() => setTheme('dark')}
+                  className={`p-1.5 rounded-[var(--radius-sm)] transition-colors ${theme === 'dark' ? '' : 'opacity-50 hover:opacity-100'}`}
+                  style={{ background: theme === 'dark' ? 'var(--surface-2)' : 'transparent', color: 'var(--muted)' }}
+                  title="Modo oscuro"
+                >
+                  <Moon size={14} />
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </aside>
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Topbar */}
-        <header className="flex items-center justify-between h-14 px-5 border-b shrink-0 lg:hidden" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
-          <button onClick={() => setSidebarOpen(true)} style={{ color: 'var(--muted)' }}>
-            <Menu size={20} />
-          </button>
-          <span className="font-semibold text-sm">Concierge AI</span>
-          <div className="w-5" />
+        <header className="flex items-center justify-between h-14 px-5 border-b shrink-0" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setSidebarOpen(true)} className="lg:hidden" style={{ color: 'var(--muted)' }}>
+              <Menu size={20} />
+            </button>
+            <span className="font-semibold text-sm truncate">{currentStore?.name ?? 'Tienda'}</span>
+          </div>
+          <a href="/notifications" className="relative p-2 rounded-[var(--radius-md)] hover:bg-[var(--surface-2)] transition-colors" style={{ color: 'var(--muted)' }}>
+            <Bell size={18} />
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+                style={{ background: '#ef4444' }}>
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </a>
         </header>
 
         <main className="flex-1 overflow-auto p-6">

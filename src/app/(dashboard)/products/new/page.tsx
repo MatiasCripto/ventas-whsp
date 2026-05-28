@@ -3,17 +3,19 @@
 import { useAuthContext } from '@/lib/hooks/auth-context'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createServiceClient } from '@/lib/supabase/service'
-import { ArrowLeft } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { ArrowLeft, Upload, X } from 'lucide-react'
 import type { Category } from '@/lib/types'
 
 export default function NewProductPage() {
   const { authUser } = useAuthContext()
   const router = useRouter()
   const [saving, setSaving] = useState(false)
+  const [uploadingImg, setUploadingImg] = useState(false)
+  const [imageUrls, setImageUrls] = useState<string[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [form, setForm] = useState({
-    name: '', description: '', price: '', category_id: '', tags: '', images: '',
+    name: '', description: '', price: '', category_id: '', tags: '',
     is_active: true, featured: false,
   })
 
@@ -22,7 +24,7 @@ export default function NewProductPage() {
     if (!orgId) return
     ;(async () => {
       try {
-        const sb = createServiceClient()
+        const sb = createClient()
         const { data } = await sb.from('categories').select('id, name').eq('organization_id', orgId)
         setCategories((data ?? []) as Category[])
       } catch {
@@ -31,6 +33,27 @@ export default function NewProductPage() {
     })()
   }, [authUser])
 
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !authUser?.organization?.id) return
+    setUploadingImg(true)
+    try {
+      const sb = createClient()
+      const ext = file.name.split('.').pop()
+      const path = `${authUser.organization.id}/products/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+      const { error: uploadError } = await sb.storage.from('product-images').upload(path, file, { contentType: file.type, upsert: false })
+      if (uploadError) { alert('Error al subir: ' + uploadError.message); return }
+      const { data: urlData } = sb.storage.from('product-images').getPublicUrl(path)
+      setImageUrls(prev => [...prev, urlData.publicUrl])
+    } catch { alert('Error al subir imagen') }
+    setUploadingImg(false)
+    e.target.value = ''
+  }
+
+  function removeImage(idx: number) {
+    setImageUrls(prev => prev.filter((_, i) => i !== idx))
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const orgId = authUser?.organization?.id
@@ -38,7 +61,7 @@ export default function NewProductPage() {
     setSaving(true)
 
     try {
-      const sb = createServiceClient()
+      const sb = createClient()
       const slug = form.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
       const { data, error } = await sb.from('products').insert({
         organization_id: orgId,
@@ -48,7 +71,7 @@ export default function NewProductPage() {
         price: Number(form.price),
         category_id: form.category_id || null,
         tags: form.tags ? form.tags.split(',').map(t => t.trim()) : [],
-        images: form.images ? form.images.split('\n').map(i => i.trim()).filter(Boolean) : [],
+        images: imageUrls,
         is_active: form.is_active,
         featured: form.featured,
       }).select('id').single()
@@ -124,12 +147,32 @@ export default function NewProductPage() {
         </div>
 
         <div>
-          <label className="text-xs font-medium" style={{ color: 'var(--muted)' }}>Imágenes (URLs, una por línea)</label>
-          <textarea value={form.images} rows={3}
-            onChange={e => setForm(f => ({ ...f, images: e.target.value }))}
-            className="w-full mt-1 px-3 py-2 rounded-[var(--radius-md)] border text-sm bg-transparent outline-none resize-none"
-            style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
-          />
+          <label className="text-xs font-medium" style={{ color: 'var(--muted)' }}>Imágenes</label>
+          <div className="mt-2 flex flex-wrap gap-3">
+            {imageUrls.map((url, i) => (
+              <div key={i} className="relative w-20 h-20 rounded-[var(--radius-md)] overflow-hidden border"
+                style={{ borderColor: 'var(--border)' }}>
+                <img src={url} alt="" className="w-full h-full object-cover" />
+                <button type="button" onClick={() => removeImage(i)}
+                  className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-black/50 text-white">
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+            <label className="flex items-center justify-center w-20 h-20 rounded-[var(--radius-md)] border-2 border-dashed cursor-pointer transition-colors hover:bg-[var(--surface-2)]"
+              style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}>
+              {uploadingImg ? (
+                <span className="text-xs">Subiendo...</span>
+              ) : (
+                <Upload size={20} />
+              )}
+              <input type="file" accept="image/png,image/jpeg,image/webp"
+                onChange={handleImageUpload} className="hidden" disabled={uploadingImg} />
+            </label>
+          </div>
+          <p className="text-xs mt-1.5" style={{ color: 'var(--subtle)' }}>
+            Formatos: PNG, JPG, WebP. Hacé clic para subir desde tu computadora.
+          </p>
         </div>
 
         <div className="flex items-center gap-6">

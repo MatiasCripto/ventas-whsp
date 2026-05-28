@@ -1,8 +1,8 @@
-'use client'
+﻿'use client'
 
 import { useAuthContext } from '@/lib/hooks/auth-context'
 import { useEffect, useState } from 'react'
-import { createServiceClient } from '@/lib/supabase/service'
+import { createClient } from '@/lib/supabase/client'
 import { Zap, ShoppingCart, Bell, MessageSquare, Clock, CheckCircle, XCircle } from 'lucide-react'
 import { formatRelative } from '@/lib/utils/formatters'
 
@@ -17,17 +17,17 @@ interface AutomationStat {
 const WORKFLOW_META: Record<string, { label: string; description: string; icon: React.ReactNode }> = {
   cart_abandonment_24h: {
     label: 'Carrito Abandonado (24h)',
-    description: 'Recordatorio a clientes que dejaron productos en el carrito hace más de 24hs',
+    description: 'Recordatorio a clientes que dejaron productos en el carrito hace mÃ¡s de 24hs',
     icon: <ShoppingCart size={18} />,
   },
   post_purchase_7d: {
-    label: 'Post-Compra (7 días)',
-    description: 'Seguimiento a clientes 7 días después de su compra',
+    label: 'Post-Compra (7 dÃ­as)',
+    description: 'Seguimiento a clientes 7 dÃ­as despuÃ©s de su compra',
     icon: <Bell size={18} />,
   },
   reengagement_30d: {
-    label: 'Re-engagement (30 días)',
-    description: 'Reactivación de clientes inactivos por más de 30 días',
+    label: 'Re-engagement (30 dÃ­as)',
+    description: 'ReactivaciÃ³n de clientes inactivos por mÃ¡s de 30 dÃ­as',
     icon: <MessageSquare size={18} />,
   },
 }
@@ -42,7 +42,7 @@ export default function AutomationsPage() {
     if (!orgId) return
     async function load() {
       try {
-        const sb = createServiceClient()
+        const sb = createClient()
 
         const { data } = await sb.from('automation_logs')
           .select('workflow, status, executed_at')
@@ -66,7 +66,7 @@ export default function AutomationsPage() {
 
         setStats(Object.entries(grouped).map(([workflow, s]) => ({ workflow, ...s })))
       } catch {
-        // Dev mode — sample data
+        // Dev mode â€” sample data
         setStats([
           { workflow: 'cart_abandonment_24h', total: 142, success: 128, error: 14, last_run: new Date().toISOString() },
           { workflow: 'post_purchase_7d', total: 89, success: 85, error: 4, last_run: new Date().toISOString() },
@@ -85,7 +85,7 @@ export default function AutomationsPage() {
       <div>
         <h1 className="text-xl font-semibold">Automatizaciones</h1>
         <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>
-          Workflows automáticos de WhatsApp activados por cron
+          Workflows automÃ¡ticos de WhatsApp activados por cron
         </p>
       </div>
 
@@ -127,13 +127,13 @@ export default function AutomationsPage() {
                 {stat?.last_run && (
                   <div className="flex items-center gap-1 text-xs" style={{ color: 'var(--subtle)' }}>
                     <Clock size={12} />
-                    <span>Último: {formatRelative(stat.last_run)}</span>
+                    <span>Ãšltimo: {formatRelative(stat.last_run)}</span>
                   </div>
                 )}
 
                 {!stat && (
                   <p className="text-xs" style={{ color: 'var(--subtle)' }}>
-                    Sin ejecuciones todavía. Activá el cron job para empezar.
+                    Sin ejecuciones todavÃ­a. ActivÃ¡ el cron job para empezar.
                   </p>
                 )}
               </div>
@@ -143,7 +143,7 @@ export default function AutomationsPage() {
       )}
 
       <div className="card p-5">
-        <h2 className="font-semibold text-sm mb-3">¿Cómo funciona?</h2>
+        <h2 className="font-semibold text-sm mb-3">Â¿CÃ³mo funciona?</h2>
         <div className="text-xs space-y-2" style={{ color: 'var(--muted)' }}>
           <p>Las automatizaciones se ejecutan mediante un cron job externo que llama al endpoint interno:</p>
           <code className="block p-2 rounded-[var(--radius-sm)]" style={{ background: 'var(--surface-2)' }}>
@@ -153,7 +153,7 @@ export default function AutomationsPage() {
           <code className="block p-2 rounded-[var(--radius-sm)]" style={{ background: 'var(--surface-2)' }}>
             Authorization: Bearer {'{JOB_SECRET}'}
           </code>
-          <p>Parámetros:</p>
+          <p>ParÃ¡metros:</p>
           <code className="block p-2 rounded-[var(--radius-sm)]" style={{ background: 'var(--surface-2)' }}>
             {'{ "workflow": "cart_abandonment_24h", "organization_id": "..." }'}
           </code>
@@ -162,3 +162,4 @@ export default function AutomationsPage() {
     </div>
   )
 }
+

@@ -3,7 +3,7 @@
 import { useAuthContext } from '@/lib/hooks/auth-context'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { createServiceClient } from '@/lib/supabase/service'
+import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Pencil, Trash2 } from 'lucide-react'
 import { formatCurrency, formatDate, getInitials } from '@/lib/utils/formatters'
 import type { Product, ProductVariant } from '@/lib/types'
@@ -22,7 +22,7 @@ export default function ProductDetailPage() {
     if (!orgId || !params.id) return
     async function load() {
       try {
-        const sb = createServiceClient()
+        const sb = createClient()
         const { data: p } = await sb.from('products')
           .select('*, category:categories(id, name)')
           .eq('id', params.id as string).eq('organization_id', orgId).single()
@@ -44,7 +44,7 @@ export default function ProductDetailPage() {
     if (!confirm('¿Eliminar este producto permanentemente?')) return
     setDeleting(true)
     try {
-      const sb = createServiceClient()
+      const sb = createClient()
       await sb.from('products').delete().eq('id', params.id as string)
     } catch {
       // dev mode — Supabase not available
@@ -55,7 +55,7 @@ export default function ProductDetailPage() {
 
   async function handleToggleActive() {
     if (!product) return
-    const sb = createServiceClient()
+    const sb = createClient()
     await sb.from('products').update({ is_active: !product.is_active }).eq('id', product.id)
     setProduct({ ...product, is_active: !product.is_active })
   }
@@ -64,6 +64,8 @@ export default function ProductDetailPage() {
   if (!product) return <div className="text-sm" style={{ color: 'var(--muted)' }}>Producto no encontrado</div>
 
   const totalStock = variants.reduce((s, v) => s + (v.is_active ? v.stock : 0), 0)
+  const threshold = (product as any).low_stock_threshold ?? 5
+  const lowStockVariants = variants.filter(v => v.is_active && v.stock <= threshold)
   const bestImage = product.images?.[0]
 
   return (
@@ -86,6 +88,12 @@ export default function ProductDetailPage() {
           >
             {product.is_active ? 'Activo' : 'Inactivo'}
           </button>
+          <a href={`/products/${product.id}/edit`}
+            className="p-2 rounded-[var(--radius-md)] hover:bg-[var(--surface-2)] transition-colors"
+            style={{ color: 'var(--muted)' }}
+          >
+            <Pencil size={16} />
+          </a>
           <button onClick={handleDelete} disabled={deleting}
             className="p-2 rounded-[var(--radius-md)] hover:bg-[var(--surface-2)] transition-colors"
             style={{ color: '#ef4444' }}
@@ -152,6 +160,14 @@ export default function ProductDetailPage() {
                 ))}
               </div>
             )}
+
+            {lowStockVariants.length > 0 && (
+              <div className="flex items-center gap-2 p-3 rounded-[var(--radius-md)] text-xs"
+                style={{ background: '#fef2f2', color: '#991b1b' }}>
+                <span>⚠ Stock bajo</span>
+                <span className="font-medium">{lowStockVariants.length} variante{lowStockVariants.length > 1 ? 's' : ''} por debajo del umbral ({threshold})</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -177,17 +193,25 @@ export default function ProductDetailPage() {
               </tr>
             </thead>
             <tbody>
-              {variants.map(v => (
-                <tr key={v.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
-                  <td className="px-4 py-2">{v.color ?? '—'}</td>
-                  <td className="px-4 py-2">{v.size ?? '—'}</td>
-                  <td className="px-4 py-2 text-right">{v.stock}</td>
-                  <td className="px-4 py-2 text-right">{v.price_override ? formatCurrency(v.price_override) : '—'}</td>
-                  <td className="px-4 py-2 text-center">
-                    <span className={`inline-block w-2 h-2 rounded-full ${v.is_active ? 'status-confirmed' : 'status-cancelled'}`} />
-                  </td>
-                </tr>
-              ))}
+              {variants.map(v => {
+                const isLowStock = v.is_active && v.stock <= threshold
+                return (
+                  <tr key={v.id} className={`border-t ${isLowStock ? 'bg-red-50' : ''}`} style={{ borderColor: 'var(--border)' }}>
+                    <td className="px-4 py-2">{v.color ?? '—'}</td>
+                    <td className="px-4 py-2">{v.size ?? '—'}</td>
+                    <td className="px-4 py-2 text-right">
+                      <span className={isLowStock ? 'text-red-600 font-medium' : ''}>
+                        {v.stock}
+                        {isLowStock && <span className="ml-1">⚠</span>}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-right">{v.price_override ? formatCurrency(v.price_override) : '—'}</td>
+                    <td className="px-4 py-2 text-center">
+                      <span className={`inline-block w-2 h-2 rounded-full ${v.is_active ? 'status-confirmed' : 'status-cancelled'}`} />
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}

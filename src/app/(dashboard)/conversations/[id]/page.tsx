@@ -3,8 +3,8 @@
 import { useAuthContext } from '@/lib/hooks/auth-context'
 import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
-import { createServiceClient } from '@/lib/supabase/service'
-import { ArrowLeft, Phone, User } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { ArrowLeft, Phone, Send } from 'lucide-react'
 import { formatDateTime } from '@/lib/utils/formatters'
 import type { Conversation, Message } from '@/lib/types'
 
@@ -21,14 +21,17 @@ export default function ConversationDetailPage() {
   const [conversation, setConversation] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
+  const [sending, setSending] = useState(false)
+  const [inputText, setInputText] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const orgId = authUser?.organization?.id
     if (!orgId || !params.id) return
     async function load() {
       try {
-        const sb = createServiceClient()
+        const sb = createClient()
         const { data: conv } = await sb.from('conversations')
           .select('*, customer:customers(full_name, phone, email)')
           .eq('id', params.id as string).eq('organization_id', orgId).single()
@@ -45,16 +48,56 @@ export default function ConversationDetailPage() {
       setLoading(false)
     }
     load()
+
+    // Real-time: subscribe to new messages
+    const sb = createClient()
+    const channel = sb.channel(`conv-${params.id}`)
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${params.id}` },
+        (payload) => {
+          const newMsg = payload.new as Message
+          setMessages(prev => [...prev, newMsg])
+        }
+      )
+      .subscribe()
+
+    return () => { sb.removeChannel(channel) }
   }, [authUser, params.id])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  async function handleSend() {
+    const text = inputText.trim()
+    if (!text || sending) return
+    setSending(true)
+    try {
+      const phone = (conversation as any).channel_contact_id
+      if (!phone) return alert('No hay número de teléfono en esta conversación')
+
+      const res = await fetch('/api/bot/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: params.id, phone, message: text }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        return alert('Error al enviar: ' + (err.error ?? 'desconocido'))
+      }
+      setInputText('')
+      inputRef.current?.focus()
+    } catch (err: any) {
+      alert('Error al enviar: ' + (err?.message ?? 'desconocido'))
+    }
+    setSending(false)
+  }
+
   if (loading) return <div className="text-sm" style={{ color: 'var(--muted)' }}>Cargando...</div>
   if (!conversation) return <div className="text-sm" style={{ color: 'var(--muted)' }}>Conversación no encontrada</div>
 
   const sc = STATUS_CONFIG[conversation.status] ?? STATUS_CONFIG.open
+  const contactId = (conversation as any).channel_contact_id as string | null
 
   return (
     <div className="space-y-6 animate-fade-in max-w-3xl">
@@ -93,9 +136,10 @@ export default function ConversationDetailPage() {
       </div>
 
       {/* Messages */}
-      <div className="card p-4 space-y-3 max-h-[600px] overflow-y-auto">
+      <div className="card p-4 space-y-3 max-h-[500px] overflow-y-auto"
+        style={{ minHeight: '300px' }}>
         {messages.length === 0 ? (
-          <div className="text-center py-8 text-sm" style={{ color: 'var(--muted)' }}>
+          <div className="text-center py-12 text-sm" style={{ color: 'var(--muted)' }}>
             Sin mensajes en esta conversación
           </div>
         ) : (
@@ -124,13 +168,21 @@ export default function ConversationDetailPage() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Context info */}
-      {conversation.context && Object.keys(conversation.context as object).length > 0 && (
-        <div className="card p-4">
-          <h2 className="font-semibold text-sm mb-2">Contexto de la conversación</h2>
-          <pre className="text-xs whitespace-pre-wrap" style={{ color: 'var(--muted)' }}>
-            {JSON.stringify(conversation.context, null, 2)}
-          </pre>
+      {/* Send message */}
+      {contactId && (
+        <div className="flex items-center gap-2">
+          <input ref={inputRef} type="text" value={inputText}
+            onChange={e => setInputText(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSend()}
+            placeholder="Escribí un mensaje..."
+            className="flex-1 px-4 py-2.5 rounded-[var(--radius-md)] border text-sm bg-transparent outline-none"
+            style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+          />
+          <button onClick={handleSend} disabled={sending || !inputText.trim()}
+            className="p-2.5 rounded-[var(--radius-md)] text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            style={{ background: 'var(--brand)' }}>
+            <Send size={16} />
+          </button>
         </div>
       )}
     </div>

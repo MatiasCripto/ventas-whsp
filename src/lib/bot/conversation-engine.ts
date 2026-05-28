@@ -1,152 +1,396 @@
-// ── Commerce Conversation State Machine ─────────────────────
-// ADAPTED from Clinify for commerce.
-// Pure functions — tracks conversation STATE only.
-// AI generates ALL customer-facing responses.
-// Response strings here are markers (__AI_GENERATE__) or fallbacks.
+// ── Conversation engine for Concierge AI ────────────────────────
+// Manages conversation state, persistence, and customer lookup
 
-import type { BotContext, BotState, BotIntent } from '@/lib/types/whatsapp.types'
-import { classifyIntent } from './intent-classifier'
+import { createServiceClient } from '@/lib/supabase/service'
+import type { BotContext } from '@/lib/types/whatsapp.types'
+import { recordOrderEvent } from '@/lib/services/order-event.service'
+import { reserveStockForOrder } from '@/lib/services/stock-reservation.service'
+import type { AgentAction } from './ai-chat'
+import { getProductEmoji } from '@/lib/bot/product-emoji-map'
 
-export interface EngineResult {
-  newContext: BotContext
-  responses: string[]
-  shouldEndSession: boolean
-}
-
-function makeContext(phone: string, overrides: Partial<BotContext> = {}): BotContext {
+function createContext(phone: string): BotContext {
   return {
     phone,
     customerId: null,
     customerName: null,
-    storeId: null,
-    organizationId: null,
     state: 'idle',
+    selectedProductId: null,
+    selectedOrderId: null,
     lastMessageAt: new Date().toISOString(),
     messageCount: 0,
     isKnownCustomer: false,
-    ...overrides,
   }
 }
 
-export function processMessage(
-  incomingText: string,
-  currentContext: BotContext | null,
-  pushName?: string,
-): EngineResult {
-  const phone = currentContext?.phone ?? ''
-  const ctx = currentContext ?? makeContext(phone)
-  const text = incomingText.trim()
-  const intent = classifyIntent(text)
+export async function getOrCreateConversation(orgId: string, storeId: string | null, phone: string, pushName?: string) {
+  const sb = createServiceClient()
+  // Try to find existing customer by phone, or create one
+  let { data: customer } = await sb.from('customers')
+    .select('id, full_name')
+    .eq('organization_id', orgId)
+    .eq('phone', phone)
+    .maybeSingle()
 
-  const next = { ...ctx, messageCount: ctx.messageCount + 1, lastMessageAt: new Date().toISOString() }
-
-  // Global overrides
-  if (text.toLowerCase() === 'menu' || text.toLowerCase() === 'menú') {
-    next.state = 'main_menu'
-    return { newContext: next, responses: ['__AI_GENERATE__'], shouldEndSession: false }
+  if (!customer) {
+    const { data: newCustomer } = await sb.from('customers').insert({
+      organization_id: orgId,
+      phone,
+      full_name: pushName ?? null,
+    }).select('id, full_name').single()
+    customer = newCustomer ?? null
   }
 
-  if (intent === 'human' && ctx.state !== 'human_handoff') {
-    next.state = 'human_handoff'
-    return { newContext: next, responses: ['__AI_GENERATE__'], shouldEndSession: false }
+  let customerId = customer?.id ?? null
+  let customerName = customer?.full_name ?? pushName ?? null
+  console.log('[CHECKOUT] getOrCreateConversation', { phone, customerId, customerName, customerFound: !!customer })
+
+  // Find existing open conversation
+  const { data: existing } = await sb.from('conversations')
+    .select('id, status, context')
+    .eq('organization_id', orgId)
+    .eq('channel', 'whatsapp')
+    .eq('channel_contact_id', phone)
+    .in('status', ['open', 'bot', 'human'])
+    .maybeSingle()
+
+  if (existing) {
+    const ctx = (existing.context as BotContext) ?? createContext(phone)
+    // Merge customer info into the existing context if it's missing
+    if (customerId && !ctx.customerId) {
+      ctx.customerId = customerId
+      ctx.customerName = customerName
+      ctx.isKnownCustomer = true
+      // Pre-fill checkout data from customer record (migration 013 adds dni/default_address)
+      // if (customer?.dni) ctx.checkoutDni = customer.dni
+      // if (customer?.default_address) ctx.checkoutAddress = customer.default_address
+      await sb.from('conversations').update({
+        customer_id: customerId,
+        context: ctx,
+      }).eq('id', existing.id)
+    }
+    return { conversationId: existing.id, context: ctx, isNew: false }
   }
 
-  if (intent === 'thanks' && ctx.state !== 'human_handoff') {
-    return { newContext: { ...next, state: 'idle' }, responses: ['__AI_GENERATE__'], shouldEndSession: true }
-  }
+  // Create new conversation
+  const ctx = createContext(phone)
+  if (customerName) ctx.customerName = customerName
+  if (customerId) { ctx.customerId = customerId; ctx.isKnownCustomer = true }
 
-  switch (ctx.state) {
-    case 'idle':
-    case 'greeting': {
-      if (ctx.isKnownCustomer && ctx.customerName) {
-        next.state = 'main_menu'
-        return { newContext: next, responses: ['__AI_GENERATE__'], shouldEndSession: false }
-      }
-      next.state = 'identify_customer'
-      return { newContext: next, responses: ['__AI_GENERATE__'], shouldEndSession: false }
-    }
+  const { data: conv } = await sb.from('conversations').insert({
+    organization_id: orgId,
+    store_id: storeId,
+    customer_id: customerId,
+    channel: 'whatsapp',
+    channel_contact_id: phone,
+    channel_chat_id: phone,
+    status: 'bot',
+    context: ctx,
+  }).select('id').single()
 
-    case 'identify_customer': {
-      // Try to identify by name or phone
-      const words = text.trim().split(/\s+/).filter(w => w.length > 0)
-      if (words.length >= 2) {
-        next.customerName = text.trim()
-        next.isKnownCustomer = true
-        next.state = 'main_menu'
-        return { newContext: next, responses: ['__AI_GENERATE__'], shouldEndSession: false }
-      }
-      return { newContext: next, responses: ['__AI_GENERATE__'], shouldEndSession: false }
-    }
-
-    case 'main_menu': {
-      if (intent === 'search' || intent === 'catalog') {
-        next.state = 'search_products'
-        return { newContext: next, responses: ['__AI_GENERATE__'], shouldEndSession: false }
-      }
-      if (intent === 'cart') {
-        next.state = 'cart_view'
-        return { newContext: next, responses: ['__AI_GENERATE__'], shouldEndSession: false }
-      }
-      if (intent === 'checkout') {
-        next.state = 'checkout_confirm'
-        return { newContext: next, responses: ['__AI_GENERATE__'], shouldEndSession: false }
-      }
-      if (intent === 'track_order') {
-        next.state = 'order_tracking'
-        return { newContext: next, responses: ['__AI_GENERATE__'], shouldEndSession: false }
-      }
-      if (intent === 'cancel_order') {
-        next.state = 'cancel_select'
-        return { newContext: next, responses: ['__AI_GENERATE__'], shouldEndSession: false }
-      }
-      // Default: let AI handle conversationally
-      return { newContext: next, responses: ['__AI_GENERATE__'], shouldEndSession: false }
-    }
-
-    case 'search_products':
-    case 'product_select':
-    case 'variant_select':
-    case 'cart_view':
-    case 'checkout_confirm':
-    case 'checkout_address':
-    case 'checkout_payment':
-    case 'order_tracking':
-    case 'cancel_select':
-    case 'cancel_confirm': {
-      // All these states are handled by the Commerce Brain + AI
-      // The state machine passes through to let the AI handle the conversation
-      return { newContext: next, responses: ['__AI_GENERATE__'], shouldEndSession: false }
-    }
-
-    default: {
-      next.state = 'idle'
-      if (next.isKnownCustomer && next.customerName) {
-        next.state = 'main_menu'
-        return { newContext: next, responses: ['__AI_GENERATE__'], shouldEndSession: false }
-      }
-      return { newContext: next, responses: ['__AI_GENERATE__'], shouldEndSession: false }
-    }
-  }
+  return { conversationId: conv?.id, context: ctx, isNew: true }
 }
 
-export function createInitialContext(phone: string): BotContext {
-  return makeContext(phone)
-}
-
-export function makeMessage(
-  direction: 'inbound' | 'outbound',
-  text: string,
-  phone: string,
-  state?: BotState,
-  intent?: BotIntent,
-) {
-  return {
-    id: crypto.randomUUID(),
-    phone,
+export async function saveMessage(convId: string, direction: 'inbound' | 'outbound', body: string) {
+  const sb = createServiceClient()
+  await sb.from('messages').insert({
+    conversation_id: convId,
     direction,
-    text,
-    timestamp: new Date().toISOString(),
-    botState: state,
-    intent,
+    type: 'text',
+    body,
+    sent_at: new Date().toISOString(),
+  })
+}
+
+export async function updateContext(convId: string, ctx: BotContext) {
+  ctx.lastMessageAt = new Date().toISOString()
+  ctx.messageCount++
+  const sb = createServiceClient()
+  await sb.from('conversations').update({ context: ctx }).eq('id', convId)
+}
+
+// ── Data fetching for AI context ──────────────────────────────
+
+export async function fetchProducts(sb: any, orgId: string) {
+  const { data } = await sb.from('products')
+    .select(`
+      id, name, slug, description, price, compare_price,
+      brand, tags, images, category_id, featured,
+      variants:product_variants(
+        id, sku, color, size, stock, price_override, images, is_active
+      )
+    `)
+    .eq('organization_id', orgId)
+    .eq('is_active', true)
+    .order('featured', { ascending: false })
+    .limit(50)
+
+  return data?.map((p: any) => ({
+    ...p,
+    variants: p.variants?.filter((v: any) => v.is_active) ?? []
+  })) ?? []
+}
+
+export async function fetchCustomerOrders(sb: any, orgId: string, customerId: string) {
+  const { data } = await sb.from('orders')
+    .select(`
+      id, status, total, payment_status, tracking_number,
+      created_at, shipping_address,
+      items:order_items(
+        id, product_name, variant_label, quantity, unit_price, total, variant_id,
+        variant:product_variants(
+          color, size,
+          product:products(name, images)
+        )
+      )
+    `)
+    .eq('organization_id', orgId)
+    .eq('customer_id', customerId)
+    .order('created_at', { ascending: false })
+    .limit(5)
+
+  return data ?? []
+}
+
+export async function fetchCustomerHistory(sb: any, orgId: string, customerId: string) {
+  const { data } = await sb.from('orders')
+    .select(`
+      created_at, status,
+      items:order_items(
+        quantity, unit_price,
+        variant:product_variants(
+          color, size,
+          product:products(name)
+        )
+      )
+    `)
+    .eq('organization_id', orgId)
+    .eq('customer_id', customerId)
+    .eq('status', 'completed')
+    .order('created_at', { ascending: false })
+    .limit(3)
+
+  const history: any[] = []
+  data?.forEach((o: any) => {
+    o.items?.forEach((i: any) => {
+      history.push({
+        productName: i.variant?.product?.name,
+        size: i.variant?.size,
+        color: i.variant?.color,
+        quantity: i.quantity,
+        date: o.created_at?.slice(0, 10),
+      })
+    })
+  })
+  return history
+}
+
+export async function fetchCart(sb: any, customerId: string) {
+  const { data } = await sb.from('carts')
+    .select(`
+      id,
+      items:cart_items(
+        id, quantity,
+        variant:product_variants(
+          id, color, size, stock, price_override,
+          product:products(id, name, price, images)
+        )
+      )
+    `)
+    .eq('customer_id', customerId)
+    .gte('expires_at', new Date().toISOString())
+    .maybeSingle()
+
+  if (!data) return null
+
+  const items = data.items?.map((i: any) => ({
+    id: i.id,
+    variantId: i.variant?.id,
+    productName: i.variant?.product?.name,
+    color: i.variant?.color,
+    size: i.variant?.size,
+    stock: i.variant?.stock,
+    quantity: i.quantity,
+    price: i.variant?.price_override ?? i.variant?.product?.price,
+    image: i.variant?.product?.images?.[0],
+  })) ?? []
+
+  const total = items.reduce((acc: number, i: any) => acc + (i.price * i.quantity), 0)
+  return { id: data.id, items, total }
+}
+
+export async function fetchCoupons(sb: any, orgId: string) {
+  const { data } = await sb.from('coupons')
+    .select('code, discount_type, discount_value, min_purchase, expires_at')
+    .eq('organization_id', orgId)
+    .eq('is_active', true)
+    .gte('expires_at', new Date().toISOString())
+
+  return data ?? []
+}
+
+// ── Checkout handler ────────────────────────────────────────────
+
+export interface CheckoutInput {
+  items: NonNullable<AgentAction['items']>
+  shippingMethod?: 'shipping' | 'pickup'
+  address?: string
+  locality?: string
+  pickup?: boolean
+  dni?: string
+  customerName?: string
+  customerNote?: string
+}
+
+export interface CheckoutResult {
+  ok: boolean
+  orderId?: string
+  orderNumber?: string
+  total?: number
+  itemsSummary?: string
+  message?: string
+}
+
+export async function handleCheckout(
+  sb: any,
+  orgId: string,
+  storeId: string | null,
+  customerId: string,
+  input: CheckoutInput,
+): Promise<CheckoutResult> {
+  const { items, shippingMethod, address, locality, pickup, dni, customerNote } = input
+  if (!items.length) return { ok: false, message: 'No hay productos en la compra' }
+
+  // Look up all products to match by name
+  const { data: allProducts } = await sb.from('products')
+    .select('id, name, price, variants:product_variants(id, color, size, stock, price_override, is_active)')
+    .eq('organization_id', orgId)
+    .eq('is_active', true)
+
+  console.log('[CHECKOUT] handleCheckout - products lookup', {
+    orgId,
+    customerId,
+    productsFound: allProducts?.length ?? 0,
+    productNames: allProducts?.map((p: any) => p.name) ?? [],
+    incomingItems: items,
+  })
+
+  if (!allProducts?.length) return { ok: false, message: 'Catalogo no disponible' }
+
+  // Build order items with resolved product/variant info
+  const orderItems: Array<{
+    variant_id: string
+    product_name: string
+    variant_label: string
+    quantity: number
+    unit_price: number
+    total: number
+  }> = []
+
+  for (const item of items) {
+    // Find product by name (case-insensitive, partial match)
+    const product = allProducts.find((p: any) =>
+      p.name.toLowerCase().includes(item.productName.toLowerCase())
+    )
+    if (!product) {
+      console.log('[CHECKOUT] Product NOT FOUND', { searchedName: item.productName })
+      continue
+    }
+
+    // Find matching variant (by size + color, or first active)
+    let variant = product.variants?.find((v: any) =>
+      v.is_active &&
+      (!item.size || v.size?.toLowerCase() === item.size?.toLowerCase()) &&
+      (!item.color || v.color?.toLowerCase() === item.color?.toLowerCase())
+    )
+    if (!variant) {
+      // Fallback to first active variant
+      variant = product.variants?.find((v: any) => v.is_active)
+    }
+    if (!variant) {
+      console.log('[CHECKOUT] Variant NOT FOUND for product', { productName: product.name, requested: { size: item.size, color: item.color } })
+      continue
+    }
+
+    const price = variant.price_override ?? product.price
+    const label = [variant.color, variant.size].filter(Boolean).join(' / ')
+
+    console.log('[CHECKOUT] Item matched', { productName: product.name, variantId: variant.id, price, label, quantity: item.quantity })
+
+    orderItems.push({
+      variant_id: variant.id,
+      product_name: product.name,
+      variant_label: label,
+      quantity: item.quantity || 1,
+      unit_price: price,
+      total: (item.quantity || 1) * price,
+    })
+  }
+
+  if (!orderItems.length) return { ok: false, message: 'No se pudieron identificar los productos' }
+
+  const subtotal = orderItems.reduce((sum, i) => sum + i.total, 0)
+
+  // Create order
+  const orderPayload: Record<string, any> = {
+    organization_id: orgId,
+    store_id: storeId,
+    customer_id: customerId,
+    subtotal,
+    shipping_cost: 0,
+    discount: 0,
+    total: subtotal,
+    shipping_method: shippingMethod ?? null,
+    shipping_address: address ?? null,
+    notes: customerNote ?? null,
+    status: 'pending',
+    payment_status: 'pending',
+    source: 'whatsapp',
+  }
+  // pickup/dni/locality omitted — schema columns not yet created (migration 013 pending)
+  console.log('[CHECKOUT] Order insert payload', orderPayload)
+  const { data: order, error: orderError } = await sb.from('orders').insert(orderPayload).select('id').single()
+  console.log('[CHECKOUT] Order insert result', { order, error: orderError })
+
+  if (!order) {
+    console.log('[CHECKOUT] ORDER INSERT FAILED', { error: orderError })
+    return { ok: false, message: 'Error al crear el pedido' }
+  }
+
+  // Insert order items
+  const orderItemsPayload = orderItems.map(i => ({
+    order_id: order.id,
+    variant_id: i.variant_id,
+    product_name: i.product_name,
+    variant_label: i.variant_label,
+    quantity: i.quantity,
+    unit_price: i.unit_price,
+    total: i.total,
+  }))
+  console.log('[CHECKOUT] Order items insert payload', orderItemsPayload)
+  const { error: itemsError } = await sb.from('order_items').insert(orderItemsPayload)
+  console.log('[CHECKOUT] Order items insert result', { error: itemsError })
+
+  const itemsSummary = orderItems.map(i =>
+    `${getProductEmoji(i.product_name)} ${i.product_name}${i.variant_label ? ' (' + i.variant_label + ')' : ''} x${i.quantity} - $${i.unit_price.toFixed(2)}`
+  ).join('\n')
+
+  // Record audit events
+  await recordOrderEvent(sb, { order_id: order.id, type: 'created', actor_type: 'customer', actor_id: customerId })
+  if (orderPayload.status === 'awaiting_payment') {
+    await recordOrderEvent(sb, { order_id: order.id, type: 'payment_requested', actor_type: 'system' })
+  }
+
+  // Reserve stock
+  const stockOk = await reserveStockForOrder(sb, order.id, customerId)
+  if (!stockOk) {
+    console.warn('[CHECKOUT] Stock reservation failed for order:', order.id, '— insufficient stock')
+  }
+
+  return {
+    ok: true,
+    orderId: order.id,
+    orderNumber: order.id.slice(0, 8),
+    total: subtotal,
+    itemsSummary,
   }
 }

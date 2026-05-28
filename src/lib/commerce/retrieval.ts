@@ -67,8 +67,8 @@ export async function retrieveProducts(
   ]
 
   for (const r of allResults) {
-    if (!seen.has(r.productId)) {
-      seen.add(r.productId)
+    if (!seen.has(r.id)) {
+      seen.add(r.id)
       merged.push(r)
     }
   }
@@ -82,7 +82,7 @@ export async function retrieveProducts(
     final = final.filter(p => p.price <= options.maxPrice!)
   }
   if (options.inStock) {
-    final = final.filter(p => p.stock > 0)
+    final = final.filter((p: any) => p.stock > 0)
   }
 
   return final.slice(0, limit)
@@ -117,17 +117,14 @@ export async function getProductDetail(
   const category = (p.category as Record<string, string> | null)?.name ?? ''
 
   return {
-    productId: p.id as string,
+    id: (p.id as string) ?? '',
     name: p.name as string,
     slug: p.slug as string,
     price: p.price as number,
-    comparePrice: p.compare_price as number | null,
-    images: p.images as string[] ?? [],
-    category,
-    colors,
-    sizes,
-    stock: totalStock,
-    score: 1,
+    compare_price: p.compare_price as number | null ?? undefined,
+    images: (p.images as string[]) ?? [],
+    category_name: category,
+    variants: (p.variants as ProductResult['variants']) ?? [],
   }
 }
 
@@ -236,17 +233,13 @@ async function searchByExactCategory(
     const totalStock = variants.reduce((sum, v) => sum + (v.stock || 0), 0)
 
     results.push({
-      productId: prod.id as string,
+      id: prod.id as string,
       name: prod.name as string,
       slug: prod.slug as string,
       price: prod.price as number,
-      comparePrice: prod.compare_price as number | null,
+      compare_price: prod.compare_price as number | null ?? undefined,
       images: prod.images as string[] ?? [],
-      category: (prod.category as Record<string, string> | null)?.name ?? '',
-      colors,
-      sizes,
-      stock: totalStock,
-      score: 0.8,
+      category_name: (prod.category as Record<string, string> | null)?.name ?? '',
     })
   }
 
@@ -259,17 +252,16 @@ function mapToProductResults(data: unknown[]): ProductResult[] {
   return data.map((row: unknown) => {
     const r = row as Record<string, unknown>
     return {
-      productId: r.product_id as string || r.id as string,
+      id: (r.product_id as string) || (r.id as string),
       name: r.name as string,
       slug: r.slug as string,
       price: Number(r.price) || 0,
-      comparePrice: r.compare_price ? Number(r.compare_price) : null,
+      compare_price: r.compare_price ? Number(r.compare_price) : null,
       images: (r.images as string[]) ?? [],
-      category: r.category_name as string ?? '',
-      colors: (r.colors as string[]) ?? [],
-      sizes: (r.sizes as string[]) ?? [],
-      stock: Number(r.stock) || 0,
-      score: Number(r.score) || 0,
+      category_name: (r.category_name as string) ?? '',
+      brand: (r.brand as string) ?? undefined,
+      tags: (r.tags as string[]) ?? undefined,
+      variants: (r.variants as ProductResult['variants']) ?? undefined,
     }
   })
 }

@@ -55,13 +55,18 @@ export function getInitials(name: string): string {
 // ============================================================
 
 const ORDER_STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; bg: string }> = {
-  pending:    { label: 'Pendiente',   color: '#92400e', bg: '#fffbeb' },
-  confirmed:  { label: 'Confirmado',  color: '#065f46', bg: '#f0fdf4' },
-  paid:       { label: 'Pagado',      color: '#065f46', bg: '#f0fdf4' },
-  preparing:  { label: 'Preparando',  color: '#1e40af', bg: '#eff6ff' },
-  shipped:    { label: 'Enviado',     color: '#5b21b6', bg: '#f5f3ff' },
-  delivered:  { label: 'Entregado',   color: '#065f46', bg: '#f0fdf4' },
-  cancelled:  { label: 'Cancelado',   color: '#991b1b', bg: '#fef2f2' },
+  pending:             { label: 'Pendiente',           color: '#92400e', bg: '#fffbeb' },
+  awaiting_payment:    { label: 'Esperando pago',      color: '#92400e', bg: '#fffbeb' },
+  payment_under_review:{ label: 'Pago en revisión',    color: '#1e40af', bg: '#eff6ff' },
+  payment_confirmed:   { label: 'Pago confirmado',     color: '#065f46', bg: '#f0fdf4' },
+  payment_rejected:    { label: 'Pago rechazado',       color: '#991b1b', bg: '#fef2f2' },
+  preparing:           { label: 'Preparando',          color: '#1e40af', bg: '#eff6ff' },
+  shipped:             { label: 'Enviado',             color: '#5b21b6', bg: '#f5f3ff' },
+  delivered:           { label: 'Entregado',           color: '#065f46', bg: '#f0fdf4' },
+  completed:           { label: 'Completado',          color: '#065f46', bg: '#f0fdf4' },
+  cancelled:           { label: 'Cancelado',           color: '#991b1b', bg: '#fef2f2' },
+  refunded:            { label: 'Reembolsado',         color: '#374151', bg: '#f3f4f6' },
+  expired:             { label: 'Expirado',            color: '#6b7280', bg: '#f3f4f6' },
 }
 
 export function getOrderStatusConfig(status: OrderStatus) {
@@ -73,10 +78,13 @@ export function getOrderStatusConfig(status: OrderStatus) {
 // ============================================================
 
 const PAYMENT_STATUS_CONFIG: Record<PaymentStatus, { label: string; color: string; bg: string }> = {
-  pending:  { label: 'Pendiente', color: '#92400e', bg: '#fffbeb' },
-  paid:     { label: 'Pagado',    color: '#065f46', bg: '#f0fdf4' },
-  failed:   { label: 'Fallido',   color: '#991b1b', bg: '#fef2f2' },
-  refunded: { label: 'Reembolsado', color: '#374151', bg: '#f3f4f6' },
+  pending:     { label: 'Pendiente',     color: '#92400e', bg: '#fffbeb' },
+  awaiting:    { label: 'Esperando',     color: '#92400e', bg: '#fffbeb' },
+  under_review:{ label: 'En revisión',   color: '#1e40af', bg: '#eff6ff' },
+  confirmed:   { label: 'Confirmado',    color: '#065f46', bg: '#f0fdf4' },
+  paid:        { label: 'Pagado',        color: '#065f46', bg: '#f0fdf4' },
+  failed:      { label: 'Fallido',       color: '#991b1b', bg: '#fef2f2' },
+  refunded:    { label: 'Reembolsado',    color: '#374151', bg: '#f3f4f6' },
 }
 
 export function getPaymentStatusConfig(status: PaymentStatus) {

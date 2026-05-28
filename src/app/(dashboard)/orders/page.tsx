@@ -2,7 +2,6 @@
 
 import { useAuthContext } from '@/lib/hooks/auth-context'
 import { useEffect, useState } from 'react'
-import { createServiceClient } from '@/lib/supabase/service'
 
 interface Order {
   id: string; status: string; total: number; created_at: string
@@ -11,13 +10,29 @@ interface Order {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: 'status-pending', confirmed: 'status-confirmed', paid: 'status-paid',
-  preparing: 'status-preparing', shipped: 'status-shipped', delivered: 'status-delivered', cancelled: 'status-cancelled',
+  pending: 'status-pending',
+  awaiting_payment: 'status-pending',
+  payment_under_review: 'status-under-review',
+  payment_confirmed: 'status-paid',
+  preparing: 'status-preparing',
+  shipped: 'status-shipped',
+  delivered: 'status-delivered',
+  completed: 'status-delivered',
+  cancelled: 'status-cancelled',
+  refunded: 'status-cancelled',
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  pending: 'Pendiente', confirmed: 'Confirmado', paid: 'Pagado',
-  preparing: 'Preparando', shipped: 'Enviado', delivered: 'Entregado', cancelled: 'Cancelado',
+  pending: 'Pendiente',
+  awaiting_payment: 'Esperando pago',
+  payment_under_review: 'Pago en revisión',
+  payment_confirmed: 'Pago confirmado',
+  preparing: 'Preparando',
+  shipped: 'Enviado',
+  delivered: 'Entregado',
+  completed: 'Completado',
+  cancelled: 'Cancelado',
+  refunded: 'Reembolsado',
 }
 
 export default function OrdersPage() {
@@ -31,13 +46,9 @@ export default function OrdersPage() {
     if (!orgId) return
     async function load() {
       try {
-        const sb = createServiceClient()
-        const { data } = await sb.from('orders')
-          .select('id, status, total, created_at, customer:customers(full_name), items:order_items(id)')
-          .eq('organization_id', orgId)
-          .order('created_at', { ascending: false })
-          .limit(50)
-        setOrders((data ?? []) as unknown as Order[])
+        const res = await fetch(`/api/orders?organization_id=${orgId}`)
+        const data = await res.json()
+        setOrders((data ?? []) as Order[])
       } catch {
         // Dev mode — empty state
       }
@@ -53,7 +64,7 @@ export default function OrdersPage() {
       <h1 className="text-xl font-semibold">Pedidos</h1>
 
       <div className="flex gap-2 flex-wrap">
-        {['', 'pending', 'confirmed', 'paid', 'shipped', 'delivered', 'cancelled'].map(s => (
+        {['', 'pending', 'awaiting_payment', 'payment_under_review', 'payment_confirmed', 'preparing', 'shipped', 'delivered', 'completed', 'cancelled'].map(s => (
           <button
             key={s}
             onClick={() => setFilter(s)}

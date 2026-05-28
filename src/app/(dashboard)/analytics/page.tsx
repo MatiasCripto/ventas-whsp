@@ -1,8 +1,8 @@
-'use client'
+﻿'use client'
 
 import { useAuthContext } from '@/lib/hooks/auth-context'
 import { useEffect, useState } from 'react'
-import { createServiceClient } from '@/lib/supabase/service'
+import { createClient } from '@/lib/supabase/client'
 import { TrendingUp, DollarSign, ShoppingBag, Users, Repeat, RotateCcw } from 'lucide-react'
 import { formatCurrency, formatPct } from '@/lib/utils/formatters'
 
@@ -38,14 +38,14 @@ export default function AnalyticsPage() {
     if (!orgId) return
     async function load() {
       try {
-        const sb = createServiceClient()
+        const sb = createClient()
 
-        // — Period —
+        // â€” Period â€”
         const since = new Date()
         since.setDate(since.getDate() - DAYS_RANGE)
         const sinceStr = since.toISOString()
 
-        // — Orders in period —
+        // â€” Orders in period â€”
         const { data: orders } = await sb.from('orders')
           .select('total, created_at, customer_id')
           .eq('organization_id', orgId)
@@ -58,7 +58,7 @@ export default function AnalyticsPage() {
 
         const uniqueCustomers = new Set((orders ?? []).map((o: { customer_id: string }) => o.customer_id)).size
 
-        // — Customers —
+        // â€” Customers â€”
         const { count: allCustomers } = await sb.from('customers')
           .select('id', { count: 'exact', head: true })
           .eq('organization_id', orgId)
@@ -73,14 +73,14 @@ export default function AnalyticsPage() {
           return (orders ?? []).filter((oo: { customer_id: string }) => oo.customer_id === o.customer_id).length > 1
         }).length
 
-        // — Conversion (abandoned carts) —
+        // â€” Conversion (abandoned carts) â€”
         const { count: carts } = await sb.from('carts')
           .select('id', { count: 'exact', head: true })
           .eq('organization_id', orgId)
 
         const conversionRate = (carts ?? 0) > 0 ? totalOrders / (carts ?? 1) : 0
 
-        // — Top products —
+        // â€” Top products â€”
         const { data: items } = await sb.from('order_items')
           .select('product_name, total, order:orders!inner(organization_id, created_at)')
           .eq('order.organization_id', orgId)
@@ -107,7 +107,7 @@ export default function AnalyticsPage() {
           topProducts,
         })
 
-        // — Daily series —
+        // â€” Daily series â€”
         const { data: dailyData } = await sb.from('analytics_daily')
           .select('date, total_revenue, total_orders, new_customers, conversion_rate')
           .eq('organization_id', orgId)
@@ -116,7 +116,7 @@ export default function AnalyticsPage() {
 
         setDaily((dailyData ?? []) as DailyRow[])
       } catch {
-        // Dev mode — show sample data
+        // Dev mode â€” show sample data
         setSummary({
           total_revenue: 45280, total_orders: 156, avg_order_value: 290,
           new_customers: 42, returning_customers: 28, conversion_rate: 0.18,
@@ -165,7 +165,7 @@ export default function AnalyticsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Top Products */}
         <div className="card p-5">
-          <h2 className="font-semibold text-sm mb-4">Productos Más Vendidos</h2>
+          <h2 className="font-semibold text-sm mb-4">Productos MÃ¡s Vendidos</h2>
           {summary && summary.topProducts.length > 0 ? (
             <div className="space-y-3">
               {summary.topProducts.map((p, i) => (
@@ -216,7 +216,7 @@ export default function AnalyticsPage() {
                 <span className="text-sm font-bold">{summary.abandoned_carts}</span>
               </div>
               <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
-                <span className="text-sm font-medium">Tasa de conversión</span>
+                <span className="text-sm font-medium">Tasa de conversiÃ³n</span>
                 <span className="text-sm font-bold">{formatPct(summary.conversion_rate)}</span>
               </div>
             </div>
@@ -229,7 +229,7 @@ export default function AnalyticsPage() {
       {/* Daily table */}
       <div className="card overflow-hidden">
         <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
-          <h2 className="font-semibold text-sm">Últimos {DAYS_RANGE} Días</h2>
+          <h2 className="font-semibold text-sm">Ãšltimos {DAYS_RANGE} DÃ­as</h2>
         </div>
         <table className="w-full text-sm">
           <thead>
@@ -238,7 +238,7 @@ export default function AnalyticsPage() {
               <th className="text-right px-4 py-2 font-medium">Ingresos</th>
               <th className="text-right px-4 py-2 font-medium">Pedidos</th>
               <th className="text-right px-4 py-2 font-medium">Nuevos</th>
-              <th className="text-right px-4 py-2 font-medium">Conversión</th>
+              <th className="text-right px-4 py-2 font-medium">ConversiÃ³n</th>
             </tr>
           </thead>
           <tbody>
@@ -248,13 +248,13 @@ export default function AnalyticsPage() {
                 <td className="px-4 py-2 text-right">{formatCurrency(d.total_revenue)}</td>
                 <td className="px-4 py-2 text-right">{d.total_orders}</td>
                 <td className="px-4 py-2 text-right">{d.new_customers}</td>
-                <td className="px-4 py-2 text-right">{d.conversion_rate ? formatPct(d.conversion_rate) : '—'}</td>
+                <td className="px-4 py-2 text-right">{d.conversion_rate ? formatPct(d.conversion_rate) : 'â€”'}</td>
               </tr>
             ))}
             {daily.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--muted)' }}>
-                  Sin datos diarios. Ejecutá el cron de analytics para ver métricas.
+                  Sin datos diarios. EjecutÃ¡ el cron de analytics para ver mÃ©tricas.
                 </td>
               </tr>
             )}
@@ -264,3 +264,4 @@ export default function AnalyticsPage() {
     </div>
   )
 }
+

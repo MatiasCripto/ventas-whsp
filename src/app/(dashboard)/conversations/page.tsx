@@ -1,8 +1,8 @@
-'use client'
+﻿'use client'
 
 import { useAuthContext } from '@/lib/hooks/auth-context'
 import { useEffect, useState } from 'react'
-import { createServiceClient } from '@/lib/supabase/service'
+import { createClient } from '@/lib/supabase/client'
 import { MessageSquare, Phone, Globe } from 'lucide-react'
 import { formatRelative } from '@/lib/utils/formatters'
 
@@ -41,7 +41,7 @@ export default function ConversationsPage() {
     if (!orgId) return
     async function load() {
       try {
-        const sb = createServiceClient()
+        const sb = createClient()
         let query = sb.from('conversations')
           .select('id, channel, status, human_takeover, last_message_at, created_at, customer:customers(full_name, phone), messages:messages(body)')
           .eq('organization_id', orgId)
@@ -56,7 +56,7 @@ export default function ConversationsPage() {
         const { data } = await query
         setConvs((data ?? []) as unknown as ConvRow[])
       } catch {
-        // Dev mode — empty state
+        // Dev mode â€” empty state
       }
       setLoading(false)
     }
@@ -142,3 +142,4 @@ export default function ConversationsPage() {
     </div>
   )
 }
+

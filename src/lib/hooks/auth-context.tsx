@@ -25,26 +25,35 @@ interface AuthContextValue {
   signOut: () => Promise<void>
 }
 
-const DEV_STORE: Store = {
-  id: 'dev-store', organization_id: 'dev-org', name: 'Tienda Dev',
-  address: null, phone: '+5491123456789', whatsapp_number: '+5491123456789',
-  timezone: 'America/Argentina/Buenos_Aires', settings: {}, is_active: true,
-  evolution_instance: null, created_at: new Date().toISOString(),
+function getDevOrg(): Organization {
+  if (typeof window === 'undefined') return { id: 'dev-org', name: 'Mi Tienda Dev', slug: 'mi-tienda-dev', logo_url: null, plan: 'growth', settings: {}, trial_ends_at: null, trial_used: false, created_at: new Date().toISOString() }
+  return {
+    id: 'dev-org', name: localStorage.getItem('ca-dev-org-name') || 'Mi Tienda Dev', slug: 'mi-tienda-dev',
+    logo_url: localStorage.getItem('ca-dev-logo'), plan: 'growth', settings: {},
+    trial_ends_at: null, trial_used: false, created_at: new Date().toISOString(),
+  }
 }
 
-const DEV_ORG: Organization = {
-  id: 'dev-org', name: 'Mi Tienda Dev', slug: 'mi-tienda-dev',
-  logo_url: null, plan: 'growth', settings: {},
-  trial_ends_at: null, trial_used: false, created_at: new Date().toISOString(),
+function getDevStore(): Store {
+  if (typeof window === 'undefined') return { id: 'dev-store', organization_id: 'dev-org', name: 'Tienda Dev', logo_url: null, address: null, phone: '+5491123456789', whatsapp_number: '+5491123456789', timezone: 'America/Argentina/Buenos_Aires', settings: {}, is_active: true, evolution_instance: null, created_at: new Date().toISOString() }
+  return {
+    id: 'dev-store', organization_id: 'dev-org', name: localStorage.getItem('ca-dev-store-name') || 'Tienda Dev',
+    logo_url: localStorage.getItem('ca-dev-logo'), address: null, phone: '+5491123456789',
+    whatsapp_number: localStorage.getItem('ca-dev-whatsapp') || '+5491123456789',
+    timezone: 'America/Argentina/Buenos_Aires', settings: {}, is_active: true,
+    evolution_instance: localStorage.getItem('ca-dev-evolution-instance') || null, created_at: new Date().toISOString(),
+  }
 }
 
-const DEV_AUTH_USER: AuthUser = {
-  user: { id: 'dev-user', email: 'dev@tienda.com' } as User,
-  profile: { id: 'dev-user', organization_id: 'dev-org', full_name: 'Usuario Dev', role: 'owner', avatar_url: null, is_active: true },
-  organization: DEV_ORG,
-  stores: [DEV_STORE],
-  currentStoreId: 'dev-store',
-  role: 'owner',
+function getDevAuthUser(): AuthUser {
+  return {
+    user: { id: 'dev-user', email: 'dev@tienda.com' } as User,
+    profile: { id: 'dev-user', organization_id: 'dev-org', full_name: 'Usuario Dev', role: 'owner', avatar_url: null, is_active: true },
+    organization: getDevOrg(),
+    stores: [getDevStore()],
+    currentStoreId: 'dev-store',
+    role: 'owner',
+  }
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -57,7 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Dev mode: skip Supabase auth entirely
   if (isDevMode && !authUser) {
-    setAuthUser(DEV_AUTH_USER)
+    setAuthUser(getDevAuthUser())
     setLoading(false)
   }
 
@@ -81,12 +90,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       stores = (data as Store[]) ?? []
     }
 
+    // Apply localStorage overrides (set by settings page save, survives RLS fails)
+    let finalOrg = org
+    let finalStores = stores
+    if (typeof window !== 'undefined') {
+      const lsOrgName = localStorage.getItem('ca-dev-org-name')
+      if (lsOrgName && org) finalOrg = { ...org, name: lsOrgName }
+      const lsStoreName = localStorage.getItem('ca-dev-store-name')
+      if (lsStoreName) finalStores = stores.map(s => ({ ...s, name: lsStoreName }))
+    }
     const stored = typeof window !== 'undefined' ? localStorage.getItem('ca-current-store') : null
-    const currentStoreId = (stored && stores.find(s => s.id === stored))
+    const currentStoreId = (stored && finalStores.find(s => s.id === stored))
       ? stored
-      : stores[0]?.id ?? null
+      : finalStores[0]?.id ?? null
 
-    setAuthUser({ user, profile, organization: org, stores, currentStoreId, role: profile?.role ?? null })
+    setAuthUser({ user, profile, organization: finalOrg, stores: finalStores, currentStoreId, role: profile?.role ?? null })
   }, [supabase])
 
   useEffect(() => {

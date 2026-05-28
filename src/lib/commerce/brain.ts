@@ -17,19 +17,19 @@ import type { BotContext } from '@/lib/types/whatsapp.types'
 
 function productResultToCommerce(p: ProductResult): CommerceProduct {
   return {
-    id: p.productId,
+    id: p.id,
     name: p.name,
     slug: p.slug,
     price: Number(p.price),
-    comparePrice: p.comparePrice ? Number(p.comparePrice) : null,
-    description: null,
-    colors: p.colors,
-    sizes: p.sizes,
-    stock: Number(p.stock),
-    images: p.images,
-    category: p.category,
-    brand: null,
-    tags: [],
+    comparePrice: p.compare_price ? Number(p.compare_price) : null,
+    description: p.description ?? null,
+    colors: [],
+    sizes: [],
+    stock: 999,
+    images: p.images ?? [],
+    category: p.category_name ?? null,
+    brand: p.brand ?? null,
+    tags: p.tags ?? [],
   }
 }
 
@@ -39,13 +39,14 @@ export async function processCommerceMessage(
   organizationId: string | null
 ): Promise<{
   response: string
-  newContext: Partial<BotContext>
+  newContext: Record<string, any>
   action?: { type: string; payload: Record<string, unknown> }
 }> {
+  const ctxAny = ctx as Record<string, any>
   const intent = classifyCommerceIntent(message)
 
   // Always include store info if available
-  let storeInfo = ctx.storeInfo
+  const storeInfo = ctxAny.storeInfo as CommerceContext['storePolicies']
 
   switch (intent) {
     case 'search_products':
@@ -58,8 +59,8 @@ export async function processCommerceMessage(
       let categoryFilter: string | undefined
 
       // Check if user mentioned a category
-      if (ctx.availableCategories && ctx.availableCategories.length > 0) {
-        const matchedCat = ctx.availableCategories.find(c =>
+      if (ctxAny.availableCategories && ctxAny.availableCategories.length > 0) {
+        const matchedCat = ctxAny.availableCategories.find((c: string) =>
           message.toLowerCase().includes(c.toLowerCase())
         )
         if (matchedCat) categoryFilter = matchedCat
@@ -82,9 +83,9 @@ export async function processCommerceMessage(
       const products = results.map(productResultToCommerce)
       const commerceCtx: CommerceContext = {
         products,
-        categories: ctx.availableCategories,
+        categories: ctxAny.availableCategories,
         storePolicies: storeInfo,
-        customer: ctx.customer,
+        customer: ctxAny.customer,
         state: 'search_products',
       }
 
@@ -96,19 +97,19 @@ export async function processCommerceMessage(
     }
 
     case 'get_product': {
-      if (!organizationId || !ctx.searchResults || ctx.searchResults.length === 0) {
+      if (!organizationId || !ctxAny.searchResults || ctxAny.searchResults.length === 0) {
         return { response: '¿Sobre qué producto querés saber más?', newContext: {} }
       }
 
       // Try to find which product the user is asking about
       const lowerMsg = message.toLowerCase()
-      const matchedProduct = ctx.searchResults.find(p =>
+      const matchedProduct = ctxAny.searchResults.find((p: any) =>
         lowerMsg.includes(p.name.toLowerCase())
       )
 
       if (!matchedProduct) {
         // Show the current results
-        const names = ctx.searchResults.map(p => `"${p.name}"`).join(', ')
+        const names = ctxAny.searchResults.map((p: any) => `"${p.name}"`).join(', ')
         return {
           response: `Tenemos: ${names}. ¿De cuál querés saber más?`,
           newContext: {},
@@ -122,7 +123,7 @@ export async function processCommerceMessage(
 
       const commerceCtx: CommerceContext = {
         products: [productResultToCommerce(detail)],
-        customer: ctx.customer,
+        customer: ctxAny.customer,
         storePolicies: storeInfo,
         state: 'product_detail',
       }
@@ -134,14 +135,14 @@ export async function processCommerceMessage(
     }
 
     case 'view_cart': {
-      if (!ctx.customerId || !organizationId) {
+      if (!ctxAny.customerId || !organizationId) {
         return {
           response: 'Tu carrito está vacío. ¿Querés ver nuestros productos?',
           newContext: {},
         }
       }
 
-      const cart = await getCartItems(organizationId, ctx.customerId)
+      const cart = await getCartItems(organizationId, ctxAny.customerId)
       if (cart.items.length === 0) {
         return {
           response: 'Tu carrito está vacío. ¿Querés ver lo que tenemos disponible?',
@@ -163,7 +164,7 @@ export async function processCommerceMessage(
           })),
           total: cart.total,
         },
-        customer: ctx.customer,
+        customer: ctxAny.customer,
         storePolicies: storeInfo,
         state: 'cart_view',
       }
@@ -180,9 +181,9 @@ export async function processCommerceMessage(
       }
 
       // If we have search results, try to determine which product + variant
-      const results = ctx.searchResults ?? []
+      const results: any = ctxAny.searchResults ?? []
       const lowerMsg = message.toLowerCase()
-      const matchedProduct = results.find(p =>
+      const matchedProduct = results.find((p: any) =>
         lowerMsg.includes(p.name.toLowerCase())
       )
 
@@ -194,11 +195,11 @@ export async function processCommerceMessage(
       }
 
       // Determine variant (color, size) from message
-      const requestedColor = matchedProduct.colors.find(c =>
+      const requestedColor = matchedProduct.colors.find((c: string) =>
         lowerMsg.includes(c.toLowerCase())
       ) ?? matchedProduct.colors[0] ?? null
 
-      const requestedSize = matchedProduct.sizes.find(s =>
+      const requestedSize = matchedProduct.sizes.find((s: string) =>
         lowerMsg.includes(s.toLowerCase())
       ) ?? matchedProduct.sizes[0] ?? null
 
@@ -229,10 +230,10 @@ export async function processCommerceMessage(
 
       const result = await addToCart(
         organizationId,
-        ctx.customerId,
+        ctxAny.customerId,
         (variant as Record<string, unknown>).id as string,
         1,
-        ctx.phone
+        ctxAny.phone
       )
 
       if (!result.ok) {
@@ -244,20 +245,20 @@ export async function processCommerceMessage(
 
       return {
         response: `¡Listo! Agregué "${matchedProduct.name}" a tu carrito. ¿Querés algo más o querés finalizar tu pedido?`,
-        newContext: { cartItemCount: (ctx.cartItemCount ?? 0) + 1 },
+        newContext: { cartItemCount: (ctxAny.cartItemCount ?? 0) + 1 },
         action: { type: 'add_to_cart', payload: { productId: matchedProduct.productId } },
       }
     }
 
     case 'checkout': {
-      if (!ctx.customerId || !organizationId) {
+      if (!ctxAny.customerId || !organizationId) {
         return {
           response: 'Antes de finalizar, necesito que me digas tu nombre y dirección para enviarte el pedido.',
           newContext: {},
         }
       }
 
-      const cart = await getCartItems(organizationId, ctx.customerId)
+      const cart = await getCartItems(organizationId, ctxAny.customerId)
       if (cart.items.length === 0) {
         return {
           response: 'Tu carrito está vacío. Agregá productos antes de finalizar.',
@@ -279,7 +280,7 @@ export async function processCommerceMessage(
           })),
           total: cart.total,
         },
-        customer: ctx.customer,
+        customer: ctxAny.customer,
         storePolicies: storeInfo,
         state: 'checkout_confirm',
       }
@@ -292,7 +293,7 @@ export async function processCommerceMessage(
     }
 
     case 'track_order': {
-      if (!ctx.customerId || !organizationId) {
+      if (!ctxAny.customerId || !organizationId) {
         return {
           response: 'Decime tu nombre o número de pedido y te busco la información.',
           newContext: {},
@@ -303,7 +304,7 @@ export async function processCommerceMessage(
       const { data: orders } = await sb2
         .from('orders')
         .select('id, status, total, created_at')
-        .eq('customer_id', ctx.customerId)
+        .eq('customer_id', ctxAny.customerId)
         .eq('organization_id', organizationId)
         .order('created_at', { ascending: false })
         .limit(3)
@@ -325,7 +326,7 @@ export async function processCommerceMessage(
 
       const commerceCtx: CommerceContext = {
         recentOrders,
-        customer: ctx.customer,
+        customer: ctxAny.customer,
         state: 'order_tracking',
       }
 
@@ -346,9 +347,9 @@ export async function processCommerceMessage(
     default: {
       // Unknown intent — let AI handle it conversationally
       const commerceCtx: CommerceContext = {
-        customer: ctx.customer,
+        customer: ctxAny.customer,
         storePolicies: storeInfo,
-        state: ctx.state,
+        state: ctxAny.state,
       }
       return {
         response: buildPromptForAI('unknown', commerceCtx, message),
