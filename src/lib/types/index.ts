@@ -297,6 +297,9 @@ export type OrderEventType =
   | 'preparing' | 'shipped' | 'delivered' | 'completed'
   | 'cancelled' | 'expired' | 'refunded'
   | 'item_added' | 'item_removed' | 'quantity_modified' | 'note_added'
+  // Bot conversation events
+  | 'message_received' | 'message_sent' | 'intent_detected'
+  | 'checkout_started' | 'checkout_completed'
 
 export type OrderEventActorType = 'system' | 'admin' | 'customer' | 'ai'
 

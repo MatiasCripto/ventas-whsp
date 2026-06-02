@@ -64,11 +64,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient()
   const isDevMode = typeof window !== 'undefined' && localStorage.getItem('ca-dev-mode') === 'true'
 
-  // Dev mode: skip Supabase auth entirely
-  if (isDevMode && !authUser) {
-    setAuthUser(getDevAuthUser())
-    setLoading(false)
-  }
+  // Dev mode: skip Supabase auth entirely — moved to useEffect for correct React lifecycle
+  useEffect(() => {
+    if (isDevMode) {
+      setAuthUser(getDevAuthUser())
+      setLoading(false)
+    }
+  }, [isDevMode])
 
   const loadUserData = useCallback(async (user: User) => {
     const profileRes = await supabase.from('profiles').select('*').eq('id', user.id).single()
