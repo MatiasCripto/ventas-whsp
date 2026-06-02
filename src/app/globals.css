@@ -159,6 +159,63 @@ body {
 .dark .status-cancelled { color: #fca5a5; }
 .dark .status-paid     { color: #67e8f9; }
 
+/* ── Dark mode: native select & input ──────────────────────── */
+.dark select, .dark input, .dark textarea {
+  color-scheme: dark;
+  background: var(--surface);
+  color: var(--foreground);
+}
+.dark select option {
+  background: var(--surface);
+  color: var(--foreground);
+}
+
+/* ── Radix UI primitives — theme-aware defaults ────────────── */
+[data-radix-popper-content-wrapper] {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  color: var(--foreground);
+}
+[data-radix-dialog-overlay] {
+  background: rgba(0, 0, 0, 0.5);
+}
+[data-radix-dialog-content] {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+[data-radix-dropdown-content],
+[data-radix-select-content],
+[data-radix-popover-content] {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+[data-radix-dropdown-item],
+[data-radix-select-item] {
+  color: var(--foreground);
+}
+[data-radix-dropdown-item]:hover,
+[data-radix-select-item]:hover {
+  background: var(--surface-2);
+}
+[data-radix-select-trigger] {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+}
+[data-radix-tooltip-content] {
+  background: var(--surface-2);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
 /* ── Animations ─────────────────────────────────────────── */
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(6px); }

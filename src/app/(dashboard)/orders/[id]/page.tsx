@@ -269,7 +269,7 @@ export default function OrderDetailPage() {
         {canCancel && (
           <button onClick={() => handleUpdateStatus('cancelled')} disabled={updating}
             className="px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium text-white"
-            style={{ background: '#ef4444' }}
+            style={{ background: 'var(--danger)' }}
           >
             Cancelar Pedido
           </button>
@@ -319,7 +319,7 @@ export default function OrderDetailPage() {
               onClick={() => handleUpdateStatus('cancelled')}
               disabled={updating}
               className="px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium text-white"
-              style={{ background: '#ef4444' }}
+              style={{ background: 'var(--danger)' }}
             >
               Cancelar pedido
             </button>
@@ -328,8 +328,7 @@ export default function OrderDetailPage() {
 
         {order.status === 'cancelled' && (
           <div className="text-center mt-3">
-            <span className="text-xs px-2 py-1 rounded-[var(--radius-full)] font-medium"
-              style={{ background: '#fef2f2', color: '#991b1b' }}>
+            <span className="text-xs px-2 py-1 rounded-[var(--radius-full)] font-medium status-cancelled">
               Este pedido fue cancelado
             </span>
           </div>
@@ -412,9 +411,9 @@ export default function OrderDetailPage() {
                 </a>
                 <div className="p-2 flex items-center justify-between">
                   <span className={`text-xs font-medium px-2 py-0.5 rounded-[var(--radius-full)] ${
-                    proof.status === 'approved' ? 'text-green-700 bg-green-50' :
-                    proof.status === 'rejected' ? 'text-red-700 bg-red-50' :
-                    'text-yellow-700 bg-yellow-50'
+                    proof.status === 'approved' ? 'status-confirmed' :
+                    proof.status === 'rejected' ? 'status-cancelled' :
+                    'status-pending'
                   }`}>
                     {proof.status === 'approved' ? 'Aprobado' : proof.status === 'rejected' ? 'Rechazado' : 'Pendiente'}
                   </span>
@@ -463,7 +462,7 @@ export default function OrderDetailPage() {
                         onClick={() => handleApprovePayment(proof.id)}
                         disabled={updating}
                         className="flex-1 flex items-center justify-center gap-1 text-xs font-medium py-1.5 rounded-[var(--radius-sm)] text-white"
-                        style={{ background: '#10b981' }}
+                        style={{ background: 'var(--success)' }}
                       >
                         <CheckCircle size={12} /> Aprobar
                       </button>
@@ -471,7 +470,7 @@ export default function OrderDetailPage() {
                         onClick={() => handleRejectPayment(proof.id)}
                         disabled={updating}
                         className="flex-1 flex items-center justify-center gap-1 text-xs font-medium py-1.5 rounded-[var(--radius-sm)] text-white"
-                        style={{ background: '#ef4444' }}
+                        style={{ background: 'var(--danger)' }}
                       >
                         <XCircle size={12} /> Rechazar
                       </button>
@@ -512,8 +511,7 @@ export default function OrderDetailPage() {
                     <span className="capitalize">{ev.actor_type}</span>
                   </div>
                   {ev.type === 'payment_rejected' && (ev.metadata?.notes as string) && (
-                    <div className="text-xs mt-1 p-2 rounded-[var(--radius-sm)]"
-                      style={{ background: '#fef2f2', color: '#991b1b' }}>
+                    <div className="text-xs mt-1 p-2 rounded-[var(--radius-sm)] status-cancelled">
                       {ev.metadata.notes as string}
                     </div>
                   )}
@@ -531,7 +529,7 @@ export default function OrderDetailPage() {
           <div className="flex gap-2">
             <button onClick={() => handleUpdateStatus('payment_confirmed')} disabled={updating}
               className="px-3 py-1.5 rounded-[var(--radius-md)] text-xs font-medium text-white"
-              style={{ background: '#10b981' }}>
+              style={{ background: 'var(--success)' }}>
               Confirmar pago manualmente
             </button>
             <button onClick={() => handleUpdateStatus('preparing')} disabled={updating}
@@ -626,7 +624,7 @@ export default function OrderDetailPage() {
                     <button onClick={() => handleRemoveItem(item.id)} disabled={updating}
                       className="p-1 rounded-[var(--radius-sm)] hover:bg-red-50 transition-colors"
                       title="Eliminar">
-                      <Trash2 size={14} style={{ color: '#ef4444' }} />
+                      <Trash2 size={14} style={{ color: 'var(--danger)' }} />
                     </button>
                   </td>
                 )}
@@ -649,7 +647,7 @@ export default function OrderDetailPage() {
             {order.discount > 0 && (
               <tr>
                 <td colSpan={canEdit ? 4 : 4} className="px-4 py-2 text-right text-xs" style={{ color: 'var(--muted)' }}>Descuento</td>
-                <td className="px-4 py-2 text-right text-sm" style={{ color: '#10b981' }}>-{formatCurrency(order.discount)}</td>
+                <td className="px-4 py-2 text-right text-sm" style={{ color: 'var(--success)' }}>-{formatCurrency(order.discount)}</td>
                 {canEdit && <td />}
               </tr>
             )}

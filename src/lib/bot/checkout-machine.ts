@@ -34,6 +34,52 @@ export interface CheckoutResult {
 
 export const AI_GENERATE = '__AI_GENERATE__'
 
+// ── Formal State Machine Types ────────────────────────────────
+// Architecture preparada para migración futura.
+// NO reemplaza la implementación actual — solo define tipos.
+
+/** Fases formales del checkout */
+export type CheckoutPhase =
+  | { id: 'idle' }
+  | { id: 'name' }
+  | { id: 'dni' }
+  | { id: 'shipping' }
+  | { id: 'address' }
+  | { id: 'payment_method' }
+  | { id: 'payment_waiting_proof' }
+  | { id: 'confirm' }
+  | { id: 'completed' }
+  | { id: 'error'; reason: string }
+
+/** Transición formal entre fases */
+export interface CheckoutTransition {
+  from: CheckoutPhase['id']
+  to: CheckoutPhase['id']
+  trigger: string
+}
+
+/** Mapa de transiciones válidas */
+export const VALID_TRANSITIONS: CheckoutTransition[] = [
+  { from: 'idle',                to: 'name',                 trigger: 'init_checkout' },
+  { from: 'name',                to: 'dni',                  trigger: 'name_provided' },
+  { from: 'name',                to: 'error',                trigger: 'deny' },
+  { from: 'dni',                 to: 'shipping',             trigger: 'dni_provided' },
+  { from: 'dni',                 to: 'error',                trigger: 'deny' },
+  { from: 'shipping',            to: 'address',              trigger: 'shipping_chosen' },
+  { from: 'shipping',            to: 'payment_method',       trigger: 'pickup_chosen' },
+  { from: 'address',             to: 'payment_method',       trigger: 'address_provided' },
+  { from: 'payment_method',      to: 'payment_waiting_proof', trigger: 'transfer_chosen' },
+  { from: 'payment_method',      to: 'confirm',              trigger: 'cash_chosen' },
+  { from: 'payment_waiting_proof', to: 'payment_method',     trigger: 'deny' },
+  { from: 'confirm',             to: 'completed',            trigger: 'confirmed' },
+  { from: 'confirm',             to: 'name',                 trigger: 'deny' },
+]
+
+/** Verifica si una transición es válida según el mapa formal */
+export function isValidTransition(from: CheckoutState, to: CheckoutState): boolean {
+  return VALID_TRANSITIONS.some(t => t.from === from && t.to === to)
+}
+
 // ── Sentinels for human intent detection ─────────────────────
 
 const CONFIRM_WORDS = /^(s[ií]|si|dale|ok|confirmo|confirmar|perfecto|de acuerdo|est[aá] bien|adelante|mandale|vamos|sip|sisi|obvio|claro|yes|ye[ps])\b/i
