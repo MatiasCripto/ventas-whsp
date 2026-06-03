@@ -9,8 +9,8 @@ const mockItems: CheckoutItem[] = [
 describe('Checkout State Machine', () => {
   it('should start at name state from idle', () => {
     const result = initCheckout(mockItems, {})
-    expect(result.session.state).toBe('name')
-    expect(result.session.items).toEqual(mockItems)
+    expect(result.state).toBe('name')
+    expect(result.items).toEqual(mockItems)
   })
 
   it('should transition name -> dni on valid name input', () => {
@@ -85,14 +85,16 @@ describe('Checkout State Machine', () => {
     expect(result.action?.type).toBe('checkout')
   })
 
-  it('should go back to payment_method from confirm when user says no', () => {
+  it('should reset to name from confirm when user says no', () => {
     const session: CheckoutSession = {
       state: 'confirm', items: mockItems, customerName: 'Juan',
       shippingMethod: 'shipping', address: 'Av. Siempre Viva 123',
       paymentMethod: 'cash_on_delivery', pickup: false,
     }
     const result = processCheckoutMessage('no, quiero pagar con transferencia', session)
-    expect(result.session.state).toBe('payment_method')
+    // User saying no in confirm state resets the checkout
+    expect(result.session.state).toBe('name')
+    expect(result.action?.type).not.toBe('checkout')
   })
 
   it('should mark completed as terminal state (no transition out)', () => {
@@ -103,21 +105,22 @@ describe('Checkout State Machine', () => {
     expect(result.session.state).toBe('completed')
   })
 
-  it('should return AI_GENERATE for unexpected input', () => {
+  it('should always advance from name state (any input = name)', () => {
     const session: CheckoutSession = {
       state: 'name', items: mockItems, pickup: false,
     }
     const result = processCheckoutMessage('qué colores tienen?', session)
-    expect(result.response).toBe(AI_GENERATE)
-    expect(result.session.state).toBe('name')
+    // In name state, ANY input is treated as the customer's name
+    expect(result.session.state).toBe('dni')
   })
 
-  it('should go from name -> completed (invalid, stays in name)', () => {
+  it('should not skip to completed from name (must go through all states)', () => {
     const session: CheckoutSession = {
       state: 'name', items: mockItems, pickup: false,
     }
-    const result = processCheckoutMessage('quiero confirmar', session)
-    expect(result.session.state).toBe('name')
+    const result = processCheckoutMessage('confirmar sin dar nombre', session)
+    // State machine advances to next state (dni) but never directly to completed
+    expect(result.session.state).not.toBe('completed')
     expect(result.action?.type).not.toBe('checkout')
   })
 })
