@@ -22,32 +22,39 @@ export async function GET(req: NextRequest) {
 
     if (!orgs) return NextResponse.json([])
 
-    // Enrich with orders and customers counts
-    const enriched = await Promise.all(
-      orgs.map(async (org: any) => {
-        const { count: ordersCount } = await sb
-          .from('orders')
-          .select('id', { count: 'exact', head: true })
-          .eq('organization_id', org.id)
+    const orgIds = orgs.map((o: any) => o.id)
 
-        const { count: customersCount } = await sb
-          .from('customers')
-          .select('id', { count: 'exact', head: true })
-          .eq('organization_id', org.id)
+    // Batch orders count: single query, count in JS
+    const { data: allOrders } = await sb
+      .from('orders')
+      .select('organization_id')
+      .in('organization_id', orgIds)
+    const orderCounts = new Map<string, number>()
+    for (const o of allOrders ?? []) {
+      orderCounts.set(o.organization_id, (orderCounts.get(o.organization_id) ?? 0) + 1)
+    }
 
-        return {
-          id: org.id,
-          name: org.name,
-          slug: org.slug,
-          active: org.active,
-          created_at: org.created_at,
-          stores_count: (org.stores as any[])?.[0]?.count ?? 0,
-          profiles_count: (org.profiles as any[])?.[0]?.count ?? 0,
-          orders_count: ordersCount ?? 0,
-          customers_count: customersCount ?? 0,
-        }
-      }),
-    )
+    // Batch customers count: single query, count in JS
+    const { data: allCustomers } = await sb
+      .from('customers')
+      .select('organization_id')
+      .in('organization_id', orgIds)
+    const customerCounts = new Map<string, number>()
+    for (const c of allCustomers ?? []) {
+      customerCounts.set(c.organization_id, (customerCounts.get(c.organization_id) ?? 0) + 1)
+    }
+
+    const enriched = orgs.map((org: any) => ({
+      id: org.id,
+      name: org.name,
+      slug: org.slug,
+      active: org.active,
+      created_at: org.created_at,
+      stores_count: (org.stores as any[])?.[0]?.count ?? 0,
+      profiles_count: (org.profiles as any[])?.[0]?.count ?? 0,
+      orders_count: orderCounts.get(org.id) ?? 0,
+      customers_count: customerCounts.get(org.id) ?? 0,
+    }))
 
     return NextResponse.json(enriched)
   } catch (err) {

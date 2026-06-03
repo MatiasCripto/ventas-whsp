@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
     const auth = await requireOrgAccess(req)
     if (!auth.authorized) return auth.response
 
-    const { orgName, storeName, whatsappNumber, evolutionInstance } = await req.json()
+    const { orgName, storeName, whatsappNumber, evolutionInstance, logoUrl } = await req.json()
     const sb = createServiceClient()
 
     // Find the store — filtered by the authenticated user's organization
@@ -27,10 +27,11 @@ export async function POST(req: NextRequest) {
     if (orgName) {
       await sb.from('organizations').update({ name: orgName }).eq('id', orgId)
     }
-    const updates: Record<string, string> = {}
+    const updates: Record<string, string | null> = {}
     if (storeName) updates.name = storeName
     if (whatsappNumber !== undefined) updates.whatsapp_number = whatsappNumber
     if (evolutionInstance !== undefined) updates.evolution_instance = evolutionInstance
+    if (logoUrl !== undefined) updates.logo_url = logoUrl
     if (Object.keys(updates).length > 0) {
       await sb.from('stores').update(updates).eq('id', storeId)
     }

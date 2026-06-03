@@ -49,8 +49,12 @@ export default function SettingsPage() {
       const { data: urlData } = sb.storage.from('store-logos').getPublicUrl(path)
       const logoUrl = urlData.publicUrl
       setStoreLogo(logoUrl)
-      // Save to store record immediately
-      await sb.from('stores').update({ logo_url: logoUrl }).eq('id', currentStore.id)
+      // Save via API route (uses service_role — bypasses RLS)
+      await fetch('/api/settings/store', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logoUrl }),
+      })
       updateCurrentStore({ logo_url: logoUrl })
     } catch (err: any) {
       alert('Error al subir logo: ' + (err?.message ?? 'desconocido'))
@@ -157,10 +161,14 @@ export default function SettingsPage() {
             {storeLogo ? (
               <div className="relative w-20 h-20 rounded-full overflow-hidden border-2" style={{ borderColor: 'var(--border)' }}>
                 <img src={storeLogo} alt="Logo" className="w-full h-full object-cover" />
-                <button type="button" onClick={() => {
+                <button type="button" onClick={async () => {
                   setStoreLogo(null)
                   if (currentStore) {
-                    createClient().from('stores').update({ logo_url: null }).eq('id', currentStore.id)
+                    await fetch('/api/settings/store', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ logoUrl: null }),
+                    })
                     updateCurrentStore({ logo_url: null })
                   }
                 }}
