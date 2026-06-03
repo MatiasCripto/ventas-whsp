@@ -4,16 +4,13 @@ import { useAuthContext } from '@/lib/hooks/auth-context'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Upload, X, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Upload, X } from 'lucide-react'
+import VariantsEditor from '@/components/products/variants-editor'
 import type { Category } from '@/lib/types'
-
-interface Variant {
-  id: string; color: string | null; size: string | null
-  stock: number; price_override: number | null; is_active: boolean
-}
+import type { Variant } from '@/components/products/variants-editor'
 
 export default function EditProductPage() {
-  const { authUser } = useAuthContext()
+  const { authUser, currentStore } = useAuthContext()
   const params = useParams()
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -21,8 +18,6 @@ export default function EditProductPage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [uploading, setUploading] = useState(false)
   const [variants, setVariants] = useState<Variant[]>([])
-  const [savingVariant, setSavingVariant] = useState(false)
-  const [newVariant, setNewVariant] = useState({ color: '', size: '', stock: 0, price: '' })
   const [form, setForm] = useState({
     name: '', description: '', price: '', compare_price: '', category_id: '', tags: '',
     images: [] as string[], is_active: true, featured: false, low_stock_threshold: 5,
@@ -119,56 +114,7 @@ export default function EditProductPage() {
     }
   }
 
-  async function handleAddVariant() {
-    if (!newVariant.color && !newVariant.size) return alert('Completá al menos color o talle')
-    setSavingVariant(true)
-    try {
-      const sb = createClient()
-      const { error } = await sb.from('product_variants').insert({
-        product_id: params.id as string,
-        color: newVariant.color || null,
-        size: newVariant.size || null,
-        stock: newVariant.stock,
-        price_override: newVariant.price ? parseFloat(newVariant.price) : null,
-        is_active: true,
-      })
-      if (error) return alert('Error al agregar variante: ' + error.message)
-      setNewVariant({ color: '', size: '', stock: 0, price: '' })
-      // Reload variants
-      const { data } = await sb.from('product_variants').select('*').eq('product_id', params.id as string).order('color', { ascending: true })
-      setVariants((data ?? []) as Variant[])
-    } catch (err: any) {
-      alert('Error: ' + (err?.message ?? 'desconocido'))
-    }
-    setSavingVariant(false)
-  }
-
-  async function handleUpdateVariantStock(id: string, stock: number) {
-    const sb = createClient()
-    const { error } = await sb.from('product_variants').update({ stock }).eq('id', id)
-    if (error) return alert('Error al actualizar stock: ' + error.message)
-    setVariants(v => v.map(v => v.id === id ? { ...v, stock } : v))
-  }
-
-  async function handleUpdateVariantPrice(id: string, price_override: number | null) {
-    const sb = createClient()
-    const { error } = await sb.from('product_variants').update({ price_override }).eq('id', id)
-    if (error) return alert('Error al actualizar precio: ' + error.message)
-    setVariants(v => v.map(v => v.id === id ? { ...v, price_override } : v))
-  }
-
-  async function handleDeleteVariant(id: string) {
-    if (!confirm('¿Eliminar esta variante?')) return
-    const sb = createClient()
-    const { error } = await sb.from('product_variants').delete().eq('id', id)
-    if (error) return alert('Error al eliminar: ' + error.message)
-    setVariants(v => v.filter(v => v.id !== id))
-  }
-
   if (loading) return <div className="text-sm" style={{ color: 'var(--muted)' }}>Cargando...</div>
-
-  const totalStock = variants.reduce((s, v) => s + (v.is_active ? v.stock : 0), 0)
-  const threshold = form.low_stock_threshold
 
   return (
     <div className="space-y-6 animate-fade-in max-w-2xl">
@@ -316,114 +262,12 @@ export default function EditProductPage() {
         </div>
       </form>
 
-      {/* Variants section */}
-      <div className="card overflow-hidden">
-        <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
-          <h2 className="font-semibold text-sm">Variantes ({variants.length})</h2>
-          <span className="text-xs" style={{ color: 'var(--muted)' }}>
-            Stock total: {totalStock} unidades
-          </span>
-        </div>
-
-        {variants.length === 0 ? (
-          <div className="p-6 text-center text-sm" style={{ color: 'var(--muted)' }}>
-            Sin variantes. Agregá la primera abajo.
-          </div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: 'var(--surface-2)' }}>
-                <th className="text-left px-4 py-2 font-medium">Color</th>
-                <th className="text-left px-4 py-2 font-medium">Talle</th>
-                <th className="text-right px-4 py-2 font-medium">Stock</th>
-                <th className="text-right px-4 py-2 font-medium">Precio</th>
-                <th className="text-center px-4 py-2 font-medium">Activo</th>
-                <th className="text-center px-4 py-2 font-medium w-10"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {variants.map(v => {
-                const isLowStock = v.is_active && v.stock <= threshold
-                return (
-                  <tr key={v.id} className="border-t" style={{ borderColor: 'var(--border)' }}>
-                    <td className="px-4 py-2">{v.color ?? '—'}</td>
-                    <td className="px-4 py-2">{v.size ?? '—'}</td>
-                    <td className="px-4 py-2 text-right">
-                      <input type="number" min={0} defaultValue={v.stock}
-                        onBlur={e => {
-                          const val = parseInt(e.target.value)
-                          if (!isNaN(val) && val !== v.stock) handleUpdateVariantStock(v.id, val)
-                        }}
-                        className={`w-20 text-right px-2 py-1 rounded-[var(--radius-md)] border bg-transparent outline-none text-sm ${
-                          isLowStock ? 'border-red-400' : ''
-                        }`}
-                        style={{ borderColor: isLowStock ? '#f87171' : 'var(--border)' }}
-                      />
-                      {isLowStock && (
-                        <span className="ml-1 text-xs text-red-500">⚠</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      <input type="number" min={0} step="0.01"
-                        defaultValue={v.price_override ?? ''}
-                        placeholder="—"
-                        onBlur={e => {
-                          const val = e.target.value
-                          const num = val ? parseFloat(val) : null
-                          if (num !== v.price_override) handleUpdateVariantPrice(v.id, num)
-                        }}
-                        className="w-24 text-right px-2 py-1 rounded-[var(--radius-md)] border bg-transparent outline-none text-sm"
-                        style={{ borderColor: 'var(--border)' }}
-                      />
-                    </td>
-                    <td className="px-4 py-2 text-center">
-                      <span className={`inline-block w-2 h-2 rounded-full ${v.is_active ? 'status-confirmed' : 'status-cancelled'}`} />
-                    </td>
-                    <td className="px-4 py-2 text-center">
-                      <button type="button" onClick={() => handleDeleteVariant(v.id)}
-                        className="p-1 rounded hover:bg-[var(--surface-2)] transition-colors"
-                        style={{ color: '#ef4444' }}>
-                        <Trash2 size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
-
-        {/* Add variant form */}
-        <div className="px-4 py-3 border-t flex items-center gap-2 flex-wrap" style={{ borderColor: 'var(--border)' }}>
-          <input type="text" placeholder="Color" value={newVariant.color}
-            onChange={e => setNewVariant(v => ({ ...v, color: e.target.value }))}
-            className="flex-1 min-w-[100px] px-3 py-1.5 rounded-[var(--radius-md)] border text-sm bg-transparent outline-none"
-            style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
-          />
-          <input type="text" placeholder="Talle" value={newVariant.size}
-            onChange={e => setNewVariant(v => ({ ...v, size: e.target.value }))}
-            className="flex-1 min-w-[80px] px-3 py-1.5 rounded-[var(--radius-md)] border text-sm bg-transparent outline-none"
-            style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
-          />
-          <input type="number" placeholder="Stock" min={0} value={newVariant.stock}
-            onChange={e => setNewVariant(v => ({ ...v, stock: parseInt(e.target.value) || 0 }))}
-            className="w-20 px-3 py-1.5 rounded-[var(--radius-md)] border text-sm bg-transparent outline-none"
-            style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
-          />
-          <input type="number" placeholder="Precio" min={0} step="0.01" value={newVariant.price}
-            onChange={e => setNewVariant(v => ({ ...v, price: e.target.value }))}
-            className="w-24 px-3 py-1.5 rounded-[var(--radius-md)] border text-sm bg-transparent outline-none"
-            style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
-          />
-          <button type="button" onClick={handleAddVariant} disabled={savingVariant}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-[var(--radius-md)] text-white text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
-            style={{ background: 'var(--brand)' }}
-          >
-            <Plus size={14} />
-            Agregar
-          </button>
-        </div>
-      </div>
+      <VariantsEditor
+        productId={params.id as string}
+        variants={variants}
+        onChange={setVariants}
+        lowStockThreshold={form.low_stock_threshold}
+      />
     </div>
   )
 }

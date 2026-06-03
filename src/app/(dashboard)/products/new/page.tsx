@@ -5,7 +5,9 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Upload, X } from 'lucide-react'
+import VariantsEditor from '@/components/products/variants-editor'
 import type { Category } from '@/lib/types'
+import type { Variant } from '@/components/products/variants-editor'
 
 export default function NewProductPage() {
   const { authUser } = useAuthContext()
@@ -14,6 +16,7 @@ export default function NewProductPage() {
   const [uploadingImg, setUploadingImg] = useState(false)
   const [imageUrls, setImageUrls] = useState<string[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [variants, setVariants] = useState<Variant[]>([])
   const [form, setForm] = useState({
     name: '', description: '', price: '', category_id: '', tags: '',
     is_active: true, featured: false,
@@ -76,9 +79,30 @@ export default function NewProductPage() {
         featured: form.featured,
       }).select('id').single()
 
+      if (error) { setSaving(false); return alert('Error al crear: ' + error.message) }
+      const productId = data!.id
+
+      // Insert variants if any
+      if (variants.length > 0) {
+        const variantRows = variants.map(v => ({
+          product_id: productId,
+          color: v.color,
+          size: v.size,
+          stock: v.stock,
+          price_override: v.price_override,
+          is_active: v.is_active,
+        }))
+        const { error: varError } = await sb.from('product_variants').insert(variantRows)
+        if (varError) {
+          // Rollback: delete the product if variants fail
+          await sb.from('products').delete().eq('id', productId)
+          setSaving(false)
+          return alert('Error al crear variantes: ' + varError.message)
+        }
+      }
+
       setSaving(false)
-      if (error) return alert('Error al crear: ' + error.message)
-      if (data) router.push(`/products/${data.id}`)
+      router.push(`/products/${productId}`)
     } catch {
       setSaving(false)
       alert('Error al crear producto (dev mode: Supabase no disponible)')
@@ -199,6 +223,11 @@ export default function NewProductPage() {
           </button>
         </div>
       </form>
+
+      <VariantsEditor
+        variants={variants}
+        onChange={setVariants}
+      />
     </div>
   )
 }
