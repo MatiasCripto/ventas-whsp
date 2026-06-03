@@ -5,6 +5,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import type { BotContext } from '@/lib/types/whatsapp.types'
 import { recordOrderEvent } from '@/lib/services/order-event.service'
 import { reserveStockForOrder } from '@/lib/services/stock-reservation.service'
+import { getVariantAvailableStock } from '@/lib/repositories/stock-reservation.repository'
 import type { AgentAction } from './ai-chat'
 import { getProductEmoji } from '@/lib/bot/product-emoji-map'
 
@@ -123,6 +124,53 @@ export async function fetchProducts(sb: any, orgId: string) {
     .eq('is_active', true)
     .order('featured', { ascending: false })
     .limit(50)
+
+  return data?.map((p: any) => ({
+    ...p,
+    variants: p.variants?.filter((v: any) => v.is_active) ?? []
+  })) ?? []
+}
+
+// ── Catalog search layer ─────────────────────────────────────────
+// Allows filtering products by text search, category, price range, and tags.
+
+export interface SearchProductsParams {
+  search?: string
+  categoryId?: string
+  minPrice?: number
+  maxPrice?: number
+  tags?: string[]
+}
+
+export async function searchProducts(sb: any, orgId: string, params: SearchProductsParams) {
+  let query = sb.from('products')
+    .select(`
+      id, name, slug, description, price, compare_price,
+      brand, tags, images, category_id, featured,
+      variants:product_variants(
+        id, sku, color, size, stock, price_override, images, is_active
+      )
+    `)
+    .eq('organization_id', orgId)
+    .eq('is_active', true)
+
+  if (params.search) {
+    query = query.ilike('name', `%${params.search}%`)
+  }
+  if (params.categoryId) {
+    query = query.eq('category_id', params.categoryId)
+  }
+  if (params.minPrice !== undefined) {
+    query = query.gte('price', params.minPrice)
+  }
+  if (params.maxPrice !== undefined) {
+    query = query.lte('price', params.maxPrice)
+  }
+  if (params.tags?.length) {
+    query = query.contains('tags', params.tags)
+  }
+
+  const { data } = await query.order('featured', { ascending: false }).limit(50)
 
   return data?.map((p: any) => ({
     ...p,
@@ -311,6 +359,41 @@ export function resolveProductVariant(
   return { product, variant }
 }
 
+// ── Stock availability check ──────────────────────────────────────
+// Verifies sufficient stock BEFORE order creation to avoid orphan orders.
+
+export interface StockCheckItem {
+  variantId: string
+  productName: string
+  quantity: number
+}
+
+export interface StockCheckResult {
+  ok: boolean
+  insufficientItems: Array<{ variantId: string; productName: string; requested: number; available: number }>
+}
+
+export async function checkStockAvailability(sb: any, orgId: string, items: StockCheckItem[]): Promise<StockCheckResult> {
+  const insufficientItems: Array<{ variantId: string; productName: string; requested: number; available: number }> = []
+
+  for (const item of items) {
+    const available = await getVariantAvailableStock(sb, item.variantId)
+    if (available < item.quantity) {
+      insufficientItems.push({
+        variantId: item.variantId,
+        productName: item.productName,
+        requested: item.quantity,
+        available,
+      })
+    }
+  }
+
+  return {
+    ok: insufficientItems.length === 0,
+    insufficientItems,
+  }
+}
+
 // ── Checkout handler ────────────────────────────────────────────
 
 export interface CheckoutInput {
@@ -396,6 +479,19 @@ export async function handleCheckout(
   if (!orderItems.length) return { ok: false, message: 'No se pudieron identificar los productos' }
 
   const subtotal = orderItems.reduce((sum, i) => sum + i.total, 0)
+
+  // Check stock BEFORE creating the order
+  const stockCheck = await checkStockAvailability(
+    sb, orgId,
+    orderItems.map(i => ({ variantId: i.variant_id, productName: i.product_name, quantity: i.quantity })),
+  )
+  if (!stockCheck.ok) {
+    const details = stockCheck.insufficientItems
+      .map(i => `${i.productName}: pediste ${i.requested}, disponible ${i.available}`)
+      .join('; ')
+    console.log('[CHECKOUT] Insufficient stock:', details)
+    return { ok: false, message: `Stock insuficiente: ${details}` }
+  }
 
   // Create order
   const orderPayload: Record<string, any> = {
