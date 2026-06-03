@@ -1,4 +1,10 @@
-// Minimal in-memory rate limiter for serverless environments.
+// ── In-memory rate limiter for serverless environments ─────
+// ⚠️ ADVERTENCIA: No funciona en multi-instancia ni serverless.
+//   En Vercel, Render, Railway, etc., cada cold start tiene su
+//   propio Map y los límites se reinician.
+//   Para producción multi-instancia: migrar a rate limiting via
+//   Supabase DB (`rate_limits` table con upsert atómico) o Redis.
+// ────────────────────────────────────────────────────────────
 
 const hits = new Map<string, { count: number; resetAt: number }>()
 const CLEANUP_INTERVAL = 60_000

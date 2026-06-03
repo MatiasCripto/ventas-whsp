@@ -1,6 +1,6 @@
 // ── WhatsApp webhook (Evolution API) ───────────────────────────
-// Receives incoming WhatsApp messages, processes them with AI,
-// and sends responses via Evolution API.
+// Orchestrator: delegates to specialized handlers.
+// See ./handlers/ for checkout, media, and order handling.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -12,49 +12,24 @@ import {
   acquireConversationLock, releaseConversationLock,
   resolveProductVariant,
 } from '@/lib/bot/conversation-engine'
-import { generateAiResponse, buildAiPrompt } from '@/lib/bot/ai-chat'
+import { generateAiResponse } from '@/lib/bot/ai-chat'
 import {
   initCheckout, processCheckoutMessage, AI_GENERATE,
   buildCheckoutContext,
 } from '@/lib/bot/checkout-machine'
 import { buildProductPresentation } from '@/lib/bot/product-emoji-map'
 import { getStorePaymentSettings, formatPaymentSettings } from '@/lib/bot/payment-service'
-import { uploadPaymentProof } from '@/lib/bot/storage-service'
-import { createPaymentProof } from '@/lib/bot/payment-proof-service'
 import { recordOrderEvent } from '@/lib/services/order-event.service'
-import { processPaymentProofOcr } from '@/lib/workflows/payment-proof-ocr.workflow'
-import { checkRateLimit } from '@/lib/utils/rate-limit'
-import { createHmac } from 'node:crypto'
+import { validateWebhookPayload } from './validators/payload.validator'
+import { handleMediaMessage } from './handlers/media.handler'
 import type { CheckoutState } from '@/lib/bot/checkout-machine'
-import type { EvolutionWebhookPayload, EvolutionMessageData, BotContext } from '@/lib/types/whatsapp.types'
-
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET
-
-/**
- * Optional HMAC-SHA256 verification of Evolution API webhook payload.
- * Only active when WEBHOOK_SECRET env var is configured.
- * Evolution API sends x-evolution-signature header when webhook secret is set.
- */
-function verifySignature(rawBody: string, signatureHeader: string | null): boolean {
-  if (!WEBHOOK_SECRET || WEBHOOK_SECRET === 'placeholder') return true // No secret configured — skip verification
-  if (!signatureHeader) {
-    // Evolution API might not be configured to send signatures — allow the request
-    console.warn('[WEBHOOK] WEBHOOK_SECRET is set but no x-evolution-signature header received — allowing request')
-    return true
-  }
-  try {
-    const expected = createHmac('sha256', WEBHOOK_SECRET).update(rawBody).digest('hex')
-    return expected === signatureHeader
-  } catch (err) {
-    console.error('[WEBHOOK] HMAC verification error:', err)
-    return false
-  }
-}
+import type { EvolutionMessageData, BotContext } from '@/lib/types/whatsapp.types'
 
 const CHECKOUT_STATES: Set<string> = new Set(['name', 'dni', 'shipping', 'address', 'payment_method', 'payment_waiting_proof', 'confirm', 'completed'])
 
 // Old state values that should be reset to idle
 const LEGACY_STATES: Set<string> = new Set(['checkout', 'checkout_completed'])
+const NON_EDITABLE_STATUSES = ['shipped', 'delivered', 'completed', 'cancelled', 'refunded', 'expired']
 
 function isCheckoutState(s: string): boolean {
   return CHECKOUT_STATES.has(s)
@@ -65,34 +40,12 @@ export async function POST(req: NextRequest) {
   let ctx!: BotContext
   let conversationId: string | undefined
   try {
-    // Read raw body for HMAC verification, then parse JSON
-    const rawBody = await req.text()
-    if (!verifySignature(rawBody, req.headers.get('x-evolution-signature'))) {
-      console.warn('[WEBHOOK] HMAC verification failed — rejecting')
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
-    }
+    // Validate payload via the shared validator (HMAC, parse, rate limit)
+    const validated = await validateWebhookPayload(req)
+    if (!validated.ok) return validated.response
 
-    const payload = JSON.parse(rawBody) as EvolutionWebhookPayload
-    console.log('[WEBHOOK] event:', payload.event, 'instance:', payload.instance)
-    if (payload.event !== 'messages.upsert') return NextResponse.json({ ok: true })
+    const { payload, phone, text, pushName } = validated.data
     const data = payload.data as EvolutionMessageData
-    if (data.key?.fromMe) return NextResponse.json({ ok: true })
-
-    const jid = data.key?.remoteJid ?? ''
-    const phone = jid.replace(/@s\.whatsapp\.net$/, '').replace(/@c\.us$/, '')
-
-    // Rate limit: 30 messages per minute per phone number
-    const rateCheck = checkRateLimit(`webhook:${phone}`, { windowMs: 60_000, maxHits: 30 })
-    if (!rateCheck.allowed) {
-      console.warn('[WEBHOOK] rate limit exceeded for', phone)
-      return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
-    }
-    const text = data.message?.conversation || data.message?.extendedTextMessage?.text || ''
-    const pushName = data.pushName
-    if (!phone || !text) {
-      console.log('[WEBHOOK] skip: no phone or text', { phone, hasText: !!text })
-      return NextResponse.json({ ok: true })
-    }
     console.log('[WEBHOOK] msg from:', phone, 'text:', text.slice(0, 60))
 
     // Normalize common color typos (e.g. "Balnco" -> "blanco")
@@ -119,6 +72,19 @@ export async function POST(req: NextRequest) {
     const instanceName = payload.instance
     const evoSend = (phone: string, text: string) => sendText(phone, text, undefined, instanceName)
     const evoDownload = (jid: string, msgId: string) => downloadMedia(jid, msgId, instanceName)
+
+    // Message-level idempotency: skip if this message was already processed
+    const msgId = data.key?.id
+    if (msgId) {
+      const { data: existingMsg } = await sb.from('messages')
+        .select('id')
+        .eq('channel_message_id', msgId)
+        .maybeSingle()
+      if (existingMsg) {
+        console.log('[WEBHOOK] duplicate message, skipping:', msgId)
+        return NextResponse.json({ ok: true })
+      }
+    }
 
     // Check if organization is active
     const { data: org } = await sb.from('organizations')
@@ -361,71 +327,14 @@ export async function POST(req: NextRequest) {
     // ── PAYMENT PROOF DETECTION (image + active order) ────────
     if (ctx.activeOrderId && (data.message?.imageMessage?.url || data.message?.imageMessage)) {
       const jid = data.key.remoteJid
-      const msgId = data.key.id
-      if (!jid || !msgId) return NextResponse.json({ ok: true })
+      const imgMsgId = data.key.id
+      if (!jid || !imgMsgId) return NextResponse.json({ ok: true })
 
-      // Download the image from Evolution API
-      const imageBuffer = await evoDownload(jid, msgId)
-      if (!imageBuffer) {
-        await evoSend(phone, 'No pude descargar la imagen. ¿Podés intentar de nuevo?')
-        return NextResponse.json({ ok: true })
-      }
-
-      // Upload to Supabase Storage
-      const imageUrl = await uploadPaymentProof(sb, ctx.activeOrderId, ctx.customerId!, imageBuffer, `proof_${Date.now()}.jpg`)
-      if (!imageUrl) {
-        await evoSend(phone, 'No pude guardar la imagen. ¿Podés intentar de nuevo?')
-        return NextResponse.json({ ok: true })
-      }
-
-      // Create payment_proof record
-      const createdProof = await createPaymentProof(sb, {
-        organization_id: orgId,
-        store_id: storeId,
-        order_id: ctx.activeOrderId,
-        customer_id: ctx.customerId!,
-        image_url: imageUrl,
+      return handleMediaMessage({
+        sb, ctx, conversationId, phone, orgId, storeId,
+        jid, msgId: imgMsgId,
+        evoDownload, evoSend,
       })
-
-      // Record audit event — proof received
-      await recordOrderEvent(sb, {
-        order_id: ctx.activeOrderId,
-        type: 'proof_received',
-        actor_type: 'customer',
-        actor_id: ctx.customerId!,
-      })
-
-      // Trigger OCR processing (fire-and-forget — non blocking)
-      if (createdProof?.id) {
-        processPaymentProofOcr({ proofId: createdProof.id, imageUrl }).catch(err =>
-          console.error('[WEBHOOK] OCR background error:', err)
-        )
-      }
-
-      // Update order status to payment_under_review
-      await sb.from('orders').update({
-        status: 'payment_under_review',
-        payment_status: 'under_review',
-      }).eq('id', ctx.activeOrderId)
-
-      // Reset checkout state
-      ctx.checkoutItems = undefined
-      ctx.checkoutName = undefined
-      ctx.checkoutDni = undefined
-      ctx.checkoutShippingMethod = undefined
-      ctx.checkoutAddress = undefined
-      ctx.checkoutLocality = undefined
-      ctx.checkoutReferences = undefined
-      ctx.checkoutPickup = undefined
-      ctx.checkoutPaymentMethod = undefined
-      ctx.activeOrderId = undefined
-      ctx.state = 'closed'
-
-      const confirmMsg = '¡Gracias! Recibí el comprobante 📸 Lo vamos a revisar y te avisamos cuando esté aprobado. 😊'
-      await saveMessage(conversationId, 'outbound', confirmMsg)
-      await evoSend(phone, confirmMsg)
-      await updateContext(conversationId, ctx)
-      return NextResponse.json({ ok: true })
     }
 
     // ── NORMAL FLOW (no checkout) ──────────────────────────────
@@ -608,8 +517,7 @@ export async function POST(req: NextRequest) {
       // Check order is in editable status
       const { data: orderCheck } = await sb.from('orders')
         .select('status').eq('id', ctx.activeOrderId).single()
-      const NON_EDITABLE = ['shipped', 'delivered', 'completed', 'cancelled', 'refunded', 'expired']
-      if (orderCheck && NON_EDITABLE.includes(orderCheck.status)) {
+      if (orderCheck && NON_EDITABLE_STATUSES.includes(orderCheck.status)) {
         const errMsg = `El pedido ya está "${orderCheck.status}" y no se puede modificar. ¿Querés que te prepare un pedido nuevo con esos productos?`
         historyMsgs.push({ role: 'assistant', content: errMsg })
         await saveMessage(conversationId, 'outbound', errMsg)
@@ -712,8 +620,7 @@ export async function POST(req: NextRequest) {
       // Check order is in editable status
       const { data: orderCheck } = await sb.from('orders')
         .select('status').eq('id', ctx.activeOrderId).single()
-      const NON_EDITABLE = ['shipped', 'delivered', 'completed', 'cancelled', 'refunded', 'expired']
-      if (orderCheck && NON_EDITABLE.includes(orderCheck.status)) {
+      if (orderCheck && NON_EDITABLE_STATUSES.includes(orderCheck.status)) {
         const errMsg = 'El pedido ya esta "' + orderCheck.status + '" y no se puede modificar.'
         historyMsgs.push({ role: 'assistant', content: errMsg })
         await saveMessage(conversationId, 'outbound', errMsg)
