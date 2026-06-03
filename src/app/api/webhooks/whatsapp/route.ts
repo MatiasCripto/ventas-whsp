@@ -23,8 +23,33 @@ import { uploadPaymentProof } from '@/lib/bot/storage-service'
 import { createPaymentProof } from '@/lib/bot/payment-proof-service'
 import { recordOrderEvent } from '@/lib/services/order-event.service'
 import { processPaymentProofOcr } from '@/lib/workflows/payment-proof-ocr.workflow'
+import { checkRateLimit } from '@/lib/utils/rate-limit'
+import { createHmac } from 'node:crypto'
 import type { CheckoutState } from '@/lib/bot/checkout-machine'
 import type { EvolutionWebhookPayload, EvolutionMessageData, BotContext } from '@/lib/types/whatsapp.types'
+
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET
+
+/**
+ * Optional HMAC-SHA256 verification of Evolution API webhook payload.
+ * Only active when WEBHOOK_SECRET env var is configured.
+ * Evolution API sends x-evolution-signature header when webhook secret is set.
+ */
+function verifySignature(rawBody: string, signatureHeader: string | null): boolean {
+  if (!WEBHOOK_SECRET || WEBHOOK_SECRET === 'placeholder') return true // No secret configured — skip verification
+  if (!signatureHeader) {
+    // Evolution API might not be configured to send signatures — allow the request
+    console.warn('[WEBHOOK] WEBHOOK_SECRET is set but no x-evolution-signature header received — allowing request')
+    return true
+  }
+  try {
+    const expected = createHmac('sha256', WEBHOOK_SECRET).update(rawBody).digest('hex')
+    return expected === signatureHeader
+  } catch (err) {
+    console.error('[WEBHOOK] HMAC verification error:', err)
+    return false
+  }
+}
 
 const CHECKOUT_STATES: Set<string> = new Set(['name', 'dni', 'shipping', 'address', 'payment_method', 'payment_waiting_proof', 'confirm', 'completed'])
 
@@ -40,7 +65,14 @@ export async function POST(req: NextRequest) {
   let ctx!: BotContext
   let conversationId: string | undefined
   try {
-    const payload = await req.json() as EvolutionWebhookPayload
+    // Read raw body for HMAC verification, then parse JSON
+    const rawBody = await req.text()
+    if (!verifySignature(rawBody, req.headers.get('x-evolution-signature'))) {
+      console.warn('[WEBHOOK] HMAC verification failed — rejecting')
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+    }
+
+    const payload = JSON.parse(rawBody) as EvolutionWebhookPayload
     console.log('[WEBHOOK] event:', payload.event, 'instance:', payload.instance)
     if (payload.event !== 'messages.upsert') return NextResponse.json({ ok: true })
     const data = payload.data as EvolutionMessageData
@@ -48,6 +80,13 @@ export async function POST(req: NextRequest) {
 
     const jid = data.key?.remoteJid ?? ''
     const phone = jid.replace(/@s\.whatsapp\.net$/, '').replace(/@c\.us$/, '')
+
+    // Rate limit: 30 messages per minute per phone number
+    const rateCheck = checkRateLimit(`webhook:${phone}`, { windowMs: 60_000, maxHits: 30 })
+    if (!rateCheck.allowed) {
+      console.warn('[WEBHOOK] rate limit exceeded for', phone)
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
+    }
     const text = data.message?.conversation || data.message?.extendedTextMessage?.text || ''
     const pushName = data.pushName
     if (!phone || !text) {
@@ -80,6 +119,17 @@ export async function POST(req: NextRequest) {
     const instanceName = payload.instance
     const evoSend = (phone: string, text: string) => sendText(phone, text, undefined, instanceName)
     const evoDownload = (jid: string, msgId: string) => downloadMedia(jid, msgId, instanceName)
+
+    // Check if organization is active
+    const { data: org } = await sb.from('organizations')
+      .select('active, name')
+      .eq('id', orgId)
+      .maybeSingle()
+    if (!org || org.active === false) {
+      console.log('[WEBHOOK] inactive org — ignoring message:', orgId)
+      await evoSend(phone, '⚠️ Esta tienda se encuentra desactivada. Para más información, contacte al administrador.').catch(() => {})
+      return NextResponse.json({ ok: true })
+    }
 
     // Get or create conversation
     const { conversationId: cid, context: rawCtx, isNew } = await getOrCreateConversation(orgId, storeId, phone, pushName)

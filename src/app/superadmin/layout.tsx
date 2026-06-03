@@ -3,7 +3,8 @@
 import { useRouter, usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Building2, Users, LayoutDashboard, LogOut } from 'lucide-react'
+import { Building2, Users, LayoutDashboard, LogOut, Sun, Moon } from 'lucide-react'
+import { useTheme } from 'next-themes'
 
 const NAV_ITEMS = [
   { label: 'Overview', href: '/superadmin', icon: LayoutDashboard },
@@ -16,6 +17,9 @@ export default function SuperadminLayout({ children }: { children: React.ReactNo
   const pathname = usePathname()
   const [authorized, setAuthorized] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [mounted, setMounted] = useState(false)
+  const { theme, setTheme } = useTheme()
+  useEffect(() => setMounted(true), [])
 
   useEffect(() => {
     async function checkAuth() {
@@ -114,6 +118,18 @@ export default function SuperadminLayout({ children }: { children: React.ReactNo
       <div className="flex-1 flex flex-col min-w-0">
         <header className="flex items-center justify-between h-14 px-6 border-b shrink-0" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
           <h1 className="font-semibold text-sm" style={{ color: 'var(--foreground)' }}>Concierge AI — Superadmin</h1>
+          <div className="flex items-center gap-2">
+            {mounted && (
+              <button
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                className="p-2 rounded-[var(--radius-md)] transition-colors hover:bg-[var(--surface-2)]"
+                style={{ color: 'var(--muted)' }}
+                title={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
+              >
+                {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
+            )}
+          </div>
         </header>
         <main className="flex-1 overflow-auto p-6">
           {children}

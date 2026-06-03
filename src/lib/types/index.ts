@@ -14,6 +14,7 @@ export interface Organization {
   settings: Record<string, unknown>
   trial_ends_at: string | null
   trial_used: boolean
+  active?: boolean
   created_at: string
 }
 

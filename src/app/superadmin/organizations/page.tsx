@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Eye, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Plus, Eye, Trash2, ToggleLeft, ToggleRight } from 'lucide-react'
 
 interface Org {
   id: string
@@ -27,6 +27,16 @@ export default function SuperadminOrganizations() {
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [])
+
+  const deleteOrg = async (org: Org) => {
+    if (!confirm(`¿Eliminar organización "${org.name}"?\nSe eliminarán todas sus tiendas, usuarios y datos asociados.`)) return
+    try {
+      const res = await fetch(`/api/superadmin/organizations/${org.id}`, { method: 'DELETE' })
+      if (res.ok) setOrgs((prev) => prev.filter((o) => o.id !== org.id))
+    } catch (err) {
+      console.error(err)
+    }
+  }
 
   const toggleActive = async (org: Org) => {
     try {
@@ -95,14 +105,24 @@ export default function SuperadminOrganizations() {
                   {new Date(org.created_at).toLocaleDateString()}
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <button
-                    onClick={() => router.push(`/superadmin/organizations/${org.id}`)}
-                    className="p-1.5 rounded-[var(--radius-sm)] transition-colors hover:bg-[var(--surface-2)]"
-                    style={{ color: 'var(--muted)' }}
-                    title="Ver detalle"
-                  >
-                    <Eye size={16} />
-                  </button>
+                  <div className="flex items-center justify-end gap-1">
+                    <button
+                      onClick={() => router.push(`/superadmin/organizations/${org.id}`)}
+                      className="p-1.5 rounded-[var(--radius-sm)] transition-colors hover:bg-[var(--surface-2)]"
+                      style={{ color: 'var(--muted)' }}
+                      title="Ver detalle"
+                    >
+                      <Eye size={16} />
+                    </button>
+                    <button
+                      onClick={() => deleteOrg(org)}
+                      className="p-1.5 rounded-[var(--radius-sm)] transition-colors hover:bg-[var(--danger-bg)]"
+                      style={{ color: 'var(--danger)' }}
+                      title="Eliminar"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

@@ -1,25 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
-
-async function getOrgId(req?: NextRequest): Promise<string | null> {
-  if (req) {
-    const url = new URL(req.url)
-    const paramOrgId = url.searchParams.get('orgId')
-    if (paramOrgId) return paramOrgId
-  }
-  const sb = createServiceClient()
-  const { data: { user } } = await sb.auth.getUser()
-  if (user) {
-    const { data: profile } = await sb.from('profiles').select('organization_id').eq('id', user.id).single()
-    if (profile) return profile.organization_id
-  }
-  return null
-}
+import { requireOrgAccess } from '@/lib/auth/require-org'
 
 export async function GET(req: NextRequest) {
   try {
-    const orgId = await getOrgId(req)
-    if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await requireOrgAccess(req)
+    if (!auth.authorized) return auth.response
+    const orgId = auth.orgId
 
     const url = new URL(req.url)
     const limit = parseInt(url.searchParams.get('limit') ?? '50')
@@ -44,8 +31,9 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const orgId = await getOrgId(req)
-    if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await requireOrgAccess(req)
+    if (!auth.authorized) return auth.response
+    const orgId = auth.orgId
 
     const body = await req.json()
     const { id, markAll } = body
@@ -56,7 +44,7 @@ export async function PATCH(req: NextRequest) {
         .eq('organization_id', orgId)
         .eq('read', false)
     } else if (id) {
-      await sb.from('notifications').update({ read: true }).eq('id', id)
+      await sb.from('notifications').update({ read: true }).eq('id', id).eq('organization_id', orgId)
     }
 
     return NextResponse.json({ ok: true })

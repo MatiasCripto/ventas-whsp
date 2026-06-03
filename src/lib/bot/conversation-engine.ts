@@ -123,11 +123,11 @@ export async function fetchProducts(sb: any, orgId: string) {
     .eq('organization_id', orgId)
     .eq('is_active', true)
     .order('featured', { ascending: false })
-    .limit(50)
+    .limit(30)
 
   return data?.map((p: any) => ({
     ...p,
-    variants: p.variants?.filter((v: any) => v.is_active) ?? []
+    variants: p.variants?.filter((v: any) => v.is_active).slice(0, 15) ?? []
   })) ?? []
 }
 
@@ -170,11 +170,11 @@ export async function searchProducts(sb: any, orgId: string, params: SearchProdu
     query = query.contains('tags', params.tags)
   }
 
-  const { data } = await query.order('featured', { ascending: false }).limit(50)
+  const { data } = await query.order('featured', { ascending: false }).limit(30)
 
   return data?.map((p: any) => ({
     ...p,
-    variants: p.variants?.filter((v: any) => v.is_active) ?? []
+    variants: p.variants?.filter((v: any) => v.is_active).slice(0, 15) ?? []
   })) ?? []
 }
 

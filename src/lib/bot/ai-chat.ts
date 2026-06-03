@@ -156,6 +156,35 @@ const JSON_FORMAT = `RESPONDE SIEMPRE EN JSON SIN NADA MAS:
 /** SYSTEM_PROMPT combinado = concatenación exacta de los módulos */
 const SYSTEM_PROMPT = `${BASE_PROMPT}\n\n${SALES_PROMPT}\n\n${CHECKOUT_PROMPT}\n\n${PAYMENT_PROMPT}\n\n${JSON_FORMAT}`
 
+// ── Input sanitization for prompt injection prevention ─────
+
+/** Sanitizes user input to prevent prompt injection attacks */
+function sanitizeUserInput(input: string): string {
+  const maxLength = 500
+  const trimmed = input.slice(0, maxLength)
+
+  // Remove known injection patterns (case-insensitive)
+  const injectionPatterns = [
+    /ignora?\s+(todo|las|mis|instruccion(es)?)/gi,
+    /olvida?\s+(todo|las|mis|instruccion(es)?)/gi,
+    /forget\s+(all|everything|previous)/gi,
+    /ignore\s+(all|previous|instructions)/gi,
+    /\[INST\]/g,
+    /<<SYS>>/g,
+    /<\|im_start\|>/g,
+    /<\|im_end\|>/g,
+    /system\s*:\s*(?!.*\n)/gi,
+    /assistant\s*:\s*(?!.*\n)/gi,
+  ]
+
+  let sanitized = trimmed
+  for (const pattern of injectionPatterns) {
+    sanitized = sanitized.replace(pattern, '[restricted]')
+  }
+
+  return sanitized
+}
+
 // ── Build context for the AI agent ──────────────────────────
 
 export function buildAiPrompt(userMessage: string, ctx: Record<string, any>): string {
@@ -242,7 +271,7 @@ export function buildAiPrompt(userMessage: string, ctx: Record<string, any>): st
   if (ctx.error) parts.push(`Error: ${ctx.error}`)
 
   parts.push('')
-  parts.push(`Mensaje del cliente: "${userMessage}"`)
+  parts.push(`Mensaje del cliente: "${sanitizeUserInput(userMessage)}"`)
 
   return parts.join('\n')
 }

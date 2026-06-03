@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { addItemTransactional, removeItemTransactional } from '@/lib/services/order-editing.service'
+import { requireOrgAccess } from '@/lib/auth/require-org'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const auth = await requireOrgAccess(req)
+    if (!auth.authorized) return auth.response
+
     const { id } = await params
     const body = await req.json()
     const sb = createServiceClient()
@@ -17,6 +21,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const auth = await requireOrgAccess(req)
+    if (!auth.authorized) return auth.response
+
     const { id } = await params
     const url = new URL(req.url)
     const itemId = url.searchParams.get('itemId')

@@ -41,6 +41,32 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (!authUser) return null
 
+  // If organization is inactive, show block screen
+  if (authUser.organization?.active === false) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-screen p-6">
+        <div className="max-w-md text-center space-y-4">
+          <div className="w-16 h-16 mx-auto rounded-full flex items-center justify-center" style={{ background: 'var(--danger-bg)' }}>
+            <svg className="w-8 h-8" style={{ color: 'var(--danger)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.062 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-semibold">Organización desactivada</h2>
+          <p style={{ color: 'var(--muted)' }}>
+            Esta cuenta se encuentra actualmente deshabilitada. Para más información, comuníquese con su proveedor.
+          </p>
+          <button
+            onClick={signOut}
+            className="px-6 py-2 rounded-[var(--radius-md)] text-sm font-medium text-white transition-opacity hover:opacity-90"
+            style={{ background: 'var(--brand)' }}
+          >
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-full min-h-screen">
       {/* Sidebar overlay (mobile) */}

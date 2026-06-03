@@ -65,7 +65,10 @@ const WORKFLOWS: Record<string, (orgId: string, entityType: string, entityId: st
 export async function POST(req: NextRequest) {
   // Validate job secret
   const auth = req.headers.get('authorization')?.replace('Bearer ', '')
-  if (JOB_SECRET && auth !== JOB_SECRET) {
+  if (!JOB_SECRET) {
+    return NextResponse.json({ error: 'Job secret not configured' }, { status: 503 })
+  }
+  if (auth !== JOB_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

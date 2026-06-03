@@ -99,3 +99,44 @@ export async function PATCH(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const auth = await verifySuperadmin(req)
+  if (!auth.authorized) return auth.response
+
+  const { id } = await params
+
+  try {
+    const sb = createServiceClient()
+
+    // Get all profiles for this org to delete auth users
+    const { data: profiles } = await sb
+      .from('profiles')
+      .select('id')
+      .eq('organization_id', id)
+
+    // Delete stores
+    await sb.from('stores').delete().eq('organization_id', id)
+
+    // Delete profiles
+    await sb.from('profiles').delete().eq('organization_id', id)
+
+    // Delete organization
+    await sb.from('organizations').delete().eq('id', id)
+
+    // Delete auth users (best effort)
+    if (profiles) {
+      for (const p of profiles) {
+        await sb.auth.admin.deleteUser(p.id).catch(() => {})
+      }
+    }
+
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    console.error('[SUPERADMIN] org delete error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}

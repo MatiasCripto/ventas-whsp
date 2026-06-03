@@ -1,7 +1,11 @@
-﻿import { NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { getQrCode } from '@/lib/bot/evolution-client'
+import { requireOrgAccess } from '@/lib/auth/require-org'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireOrgAccess(req)
+  if (!auth.authorized) return auth.response
+
   try {
     const data = await getQrCode()
     return NextResponse.json(data)

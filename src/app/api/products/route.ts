@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { requireOrgAccessWithParam } from '@/lib/auth/require-org'
 
 export async function GET(req: NextRequest) {
-  const orgId = req.nextUrl.searchParams.get('organization_id')
+  const auth = await requireOrgAccessWithParam(req, 'organization_id')
+  if (!auth.authorized) return auth.response
+  const orgId = auth.matchedOrgId!
   if (!orgId) return NextResponse.json({ error: 'organization_id required' }, { status: 400 })
 
   const sb = createServiceClient()
@@ -21,11 +24,17 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireOrgAccessWithParam(req, 'organization_id')
+  if (!auth.authorized) return auth.response
+
   const body = await req.json()
   const { organization_id, name, slug, description, category_id, brand, tags, price, compare_price, images, is_active, featured } = body
 
   if (!organization_id || !name || !slug || price === undefined) {
     return NextResponse.json({ error: 'Missing required fields: organization_id, name, slug, price' }, { status: 400 })
+  }
+  if (organization_id !== auth.orgId) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const sb = createServiceClient()
@@ -43,24 +52,30 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const auth = await requireOrgAccessWithParam(req, 'organization_id')
+  if (!auth.authorized) return auth.response
+
   const body = await req.json()
   const { id, ...updates } = body
 
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
   const sb = createServiceClient()
-  const { data, error } = await sb.from('products').update(updates).eq('id', id).select().single()
+  const { data, error } = await sb.from('products').update(updates).eq('id', id).eq('organization_id', auth.orgId).select().single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   return NextResponse.json(data)
 }
 
 export async function DELETE(req: NextRequest) {
+  const auth = await requireOrgAccessWithParam(req, 'organization_id')
+  if (!auth.authorized) return auth.response
+
   const id = req.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
   const sb = createServiceClient()
-  const { error } = await sb.from('products').delete().eq('id', id)
+  const { error } = await sb.from('products').delete().eq('id', id).eq('organization_id', auth.orgId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   return NextResponse.json({ ok: true })

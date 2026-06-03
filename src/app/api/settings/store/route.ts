@@ -1,20 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { requireOrgAccess } from '@/lib/auth/require-org'
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireOrgAccess(req)
+    if (!auth.authorized) return auth.response
+
     const { orgName, storeName, whatsappNumber, evolutionInstance } = await req.json()
     const sb = createServiceClient()
 
-    // Find the store — by evolution_instance if provided, otherwise first store in DB
+    // Find the store — filtered by the authenticated user's organization
     let storeId: string | null = null
     let orgId: string | null = null
     if (evolutionInstance) {
-      const { data } = await sb.from('stores').select('id, organization_id').eq('evolution_instance', evolutionInstance).maybeSingle()
+      const { data } = await sb.from('stores').select('id, organization_id').eq('evolution_instance', evolutionInstance).eq('organization_id', auth.orgId).maybeSingle()
       if (data) { storeId = data.id; orgId = data.organization_id }
-    }
-    if (!storeId) {
-      const { data } = await sb.from('stores').select('id, organization_id').limit(1).maybeSingle()
+    } else {
+      const { data } = await sb.from('stores').select('id, organization_id').eq('organization_id', auth.orgId).limit(1).maybeSingle()
       if (data) { storeId = data.id; orgId = data.organization_id }
     }
     if (!storeId || !orgId) {

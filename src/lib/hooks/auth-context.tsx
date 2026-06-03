@@ -62,7 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [loading, setLoading]   = useState(true)
   const supabase = createClient()
-  const isDevMode = typeof window !== 'undefined' && localStorage.getItem('ca-dev-mode') === 'true'
+  const isDevMode = typeof window !== 'undefined' && process.env.NODE_ENV !== 'production' && localStorage.getItem('ca-dev-mode') === 'true'
 
   // Dev mode: skip Supabase auth entirely — moved to useEffect for correct React lifecycle
   useEffect(() => {

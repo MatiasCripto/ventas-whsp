@@ -6,7 +6,10 @@ const JOB_SECRET = process.env.JOB_SECRET
 
 export async function POST(req: NextRequest) {
   const auth = req.headers.get('authorization')?.replace('Bearer ', '')
-  if (JOB_SECRET && auth !== JOB_SECRET) {
+  if (!JOB_SECRET) {
+    return NextResponse.json({ error: 'Job secret not configured' }, { status: 503 })
+  }
+  if (auth !== JOB_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

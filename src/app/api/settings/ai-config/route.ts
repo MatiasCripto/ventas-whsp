@@ -1,26 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { requireOrgAccess } from '@/lib/auth/require-org'
 
-async function getOrgId(): Promise<string | null> {
-  const sb = createServiceClient()
-  // Try real Supabase auth first
-  const { data: { user } } = await sb.auth.getUser()
-  if (user) {
-    const { data: profile } = await sb.from('profiles').select('organization_id').eq('id', user.id).single()
-    if (profile) return profile.organization_id
-  }
-  // Dev mode fallback: use the first organization in the database
-  if (process.env.NODE_ENV === 'development') {
-    const { data: orgs } = await sb.from('organizations').select('id').limit(1)
-    if (orgs?.[0]?.id) return orgs[0].id
-  }
-  return null
-}
-
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const orgId = await getOrgId()
-    if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await requireOrgAccess(req)
+    if (!auth.authorized) return auth.response
+    const orgId = auth.orgId
 
     const sb = createServiceClient()
     const { data: org } = await sb.from('organizations').select('settings').eq('id', orgId).single()
@@ -37,8 +23,9 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const orgId = await getOrgId()
-    if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await requireOrgAccess(req)
+    if (!auth.authorized) return auth.response
+    const orgId = auth.orgId
 
     const { provider, apiKey, model } = await req.json()
     if (!provider || !apiKey) return NextResponse.json({ error: 'provider and apiKey required' }, { status: 400 })

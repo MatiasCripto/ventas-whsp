@@ -1,28 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
-
-async function getOrgId(req?: NextRequest): Promise<string | null> {
-  // If client passed orgId as query param, use it (source of truth from authUser)
-  if (req) {
-    const url = new URL(req.url)
-    const paramOrgId = url.searchParams.get('orgId')
-    if (paramOrgId) return paramOrgId
-  }
-
-  // Production: get from auth
-  const sb = createServiceClient()
-  const { data: { user } } = await sb.auth.getUser()
-  if (user) {
-    const { data: profile } = await sb.from('profiles').select('organization_id').eq('id', user.id).single()
-    if (profile) return profile.organization_id
-  }
-  return null
-}
+import { requireOrgAccess } from '@/lib/auth/require-org'
 
 export async function GET(req: NextRequest) {
   try {
-    const orgId = await getOrgId(req)
-    if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await requireOrgAccess(req)
+    if (!auth.authorized) return auth.response
+    const orgId = auth.orgId
 
     const sb = createServiceClient()
     const { data, error } = await sb.from('payment_accounts')
@@ -40,8 +24,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const orgId = await getOrgId(req)
-    if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await requireOrgAccess(req)
+    if (!auth.authorized) return auth.response
+    const orgId = auth.orgId
 
     const body = await req.json()
     const { bank_name, account_holder, alias, cvu, payment_method, currency, priority, instructions, is_default } = body
@@ -113,8 +98,9 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const orgId = await getOrgId(req)
-    if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const auth = await requireOrgAccess(req)
+    if (!auth.authorized) return auth.response
+    const orgId = auth.orgId
 
     const sb = createServiceClient()
     await sb.from('payment_accounts')

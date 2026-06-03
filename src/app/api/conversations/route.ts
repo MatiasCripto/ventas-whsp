@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { requireOrgAccessWithParam } from '@/lib/auth/require-org'
 
 export async function GET(req: NextRequest) {
-  const orgId = req.nextUrl.searchParams.get('organization_id')
+  const auth = await requireOrgAccessWithParam(req, 'organization_id')
+  if (!auth.authorized) return auth.response
+  const orgId = auth.matchedOrgId!
   if (!orgId) return NextResponse.json({ error: 'organization_id required' }, { status: 400 })
 
   const sb = createServiceClient()
