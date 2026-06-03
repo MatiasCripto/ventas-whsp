@@ -24,7 +24,7 @@ export interface AgentResponse {
 export interface AgentAction {
   type: 'start_checkout' | 'add_to_order' | 'remove_from_order' | 'human_handoff' | 'request_payment_info' | 'add_to_cart' | 'remove_from_cart' | 'checkout' | 'cancel_order' | 'apply_coupon'
   reason?: string
-  items?: Array<{ productName: string; quantity: number; size?: string; color?: string }>
+  items?: Array<{ productName: string; quantity: number; size?: string; color?: string; productId?: string; variantId?: string }>
   payload?: Record<string, unknown>
 }
 

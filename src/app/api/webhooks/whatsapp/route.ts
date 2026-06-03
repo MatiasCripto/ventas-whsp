@@ -9,6 +9,8 @@ import {
   getOrCreateConversation, saveMessage, updateContext,
   fetchProducts, fetchCustomerOrders, fetchCustomerHistory,
   fetchCart, fetchCoupons, handleCheckout,
+  acquireConversationLock, releaseConversationLock,
+  resolveProductVariant,
 } from '@/lib/bot/conversation-engine'
 import { generateAiResponse, buildAiPrompt } from '@/lib/bot/ai-chat'
 import {
@@ -35,6 +37,8 @@ function isCheckoutState(s: string): boolean {
 
 export async function POST(req: NextRequest) {
   const __start = Date.now()
+  let ctx!: BotContext
+  let conversationId: string | undefined
   try {
     const payload = await req.json() as EvolutionWebhookPayload
     console.log('[WEBHOOK] event:', payload.event, 'instance:', payload.instance)
@@ -73,7 +77,8 @@ export async function POST(req: NextRequest) {
     const storeId = store.id
 
     // Get or create conversation
-    const { conversationId, context, isNew } = await getOrCreateConversation(orgId, storeId, phone, pushName)
+    const { conversationId: cid, context: rawCtx, isNew } = await getOrCreateConversation(orgId, storeId, phone, pushName)
+    conversationId = cid
     if (!conversationId) {
       console.log('[WEBHOOK] no conversationId')
       return NextResponse.json({ error: 'No conversation' }, { status: 500 })
@@ -82,8 +87,14 @@ export async function POST(req: NextRequest) {
 
     // Save inbound message
     await saveMessage(conversationId, 'inbound', text)
-    const ctx = context as BotContext
+    ctx = rawCtx as BotContext
     console.log('[WEBHOOK] state:', ctx.state, 'customerId:', ctx.customerId, 'customerName:', ctx.customerName)
+
+    // Acquire conversation lock (prevents concurrent processing race conditions)
+    if (!acquireConversationLock(ctx)) {
+      console.log('[WEBHOOK] conversation locked, skipping:', conversationId, 'processingSince:', ctx.processingStartedAt)
+      return NextResponse.json({ ok: true })
+    }
 
     // Reset legacy states from old code versions
     if (LEGACY_STATES.has(ctx.state)) {
@@ -567,20 +578,13 @@ export async function POST(req: NextRequest) {
       const insertedNames: string[] = []
 
       for (const item of items) {
-        const productMatch = products.find((p: any) =>
-          p.name.toLowerCase().includes(item.productName.toLowerCase())
-        )
-        if (!productMatch) {
-          console.log('[WEBHOOK] add_to_order: product NOT FOUND for', item.productName, '(available:', products.map((p: any) => p.name).join(', '), ')')
+        const resolved = resolveProductVariant(products, item)
+        if (!resolved) {
+          console.log('[WEBHOOK] add_to_order: product NOT FOUND for', JSON.stringify({ productName: item.productName, productId: item.productId, variantId: item.variantId }), '(available:', products.map((p: any) => p.name).join(', '), ')')
           continue
         }
+        const { product: productMatch, variant } = resolved
         console.log('[WEBHOOK] add_to_order: product found', productMatch.name, 'for', item.productName)
-
-        const variant = productMatch.variants?.find((v: any) =>
-          v.is_active &&
-          (!item.color || normalizeColor(v.color ?? '').includes(normalizeColor(item.color))) &&
-          (!item.size || v.size?.toLowerCase() === item.size.toLowerCase())
-        )
         if (!variant) {
           console.log('[WEBHOOK] add_to_order: variant NOT FOUND for', productMatch.name, 'color:', item.color, 'size:', item.size, 'available:', productMatch.variants?.map((v: any) => `${v.color}/${v.size}(${v.is_active ? 'active' : 'inactive'})`).join(', '))
           continue
@@ -766,24 +770,26 @@ export async function POST(req: NextRequest) {
           .join(' ')
 
         const searchText = (historyText + ' ' + text.toLowerCase())
-        const matchedProduct = products.find((p: any) =>
+        const guessedName = products.find((p: any) =>
           p.name && searchText.includes(p.name.toLowerCase())
-        )
+        )?.name
 
-        if (matchedProduct) {
-          console.log('[WEBHOOK] add_to_order fallback: found product', matchedProduct.name)
+        if (guessedName) {
+          console.log('[WEBHOOK] add_to_order fallback: found product', guessedName)
           // Try to match color/size from conversation history
           const histText = ((ctx.history ?? []).map( function(h: any) { return h.content; } ).join(' ') + ' ' + text).toLowerCase()
           const colorMatch = histText.match(/\b(blanco|negro|gris|azul|rojo|verde|amarillo|rosa|celeste|marron|beige|violeta|naranja)\b/i)
           const sizeMatch = histText.match(/\b([sml]|xl|xxl|xxxl|unico)\b/i)
-          let variant = matchedProduct.variants?.find((v: any) =>
-            v.is_active && v.stock > 0 &&
-            (!colorMatch || normalizeColor(v.color ?? '').includes(normalizeColor(colorMatch[1]))) &&
-            (!sizeMatch || v.size?.toLowerCase() === sizeMatch[1].toLowerCase())
-          )
-          if (!variant) variant = matchedProduct.variants?.find((v: any) => v.is_active && v.stock > 0)
 
-          if (variant) {
+          const fallbackItem: any = { productName: guessedName }
+          if (colorMatch) fallbackItem.color = normalizeColor(colorMatch[1])
+          if (sizeMatch) fallbackItem.size = sizeMatch[1].toLowerCase()
+
+          const resolved = resolveProductVariant(products, fallbackItem)
+          let matchedProduct: any = null
+          if (resolved) {
+            matchedProduct = resolved.product
+            const variant = resolved.variant
             const unitPrice = variant.price_override ?? matchedProduct.price
             const { error } = await sb.from('order_items').insert({
               order_id: ctx.activeOrderId,
@@ -846,6 +852,12 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error('[WhatsApp Webhook]', err)
     return NextResponse.json({ error: String(err) }, { status: 500 })
+  } finally {
+    if (conversationId) {
+      releaseConversationLock(ctx)
+      // Persist lock release to DB so the next webhook sees it
+      await updateContext(conversationId, ctx).catch(() => {})
+    }
   }
 }
 

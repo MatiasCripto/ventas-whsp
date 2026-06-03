@@ -228,6 +228,89 @@ export async function fetchCoupons(sb: any, orgId: string) {
   return data ?? []
 }
 
+// ── Conversation Locking (race condition guard) ────────────────
+// Prevents concurrent webhook processing for the same conversation.
+// Uses a stale-timeout pattern: if a lock is older than staleTimeoutMs,
+// it is treated as abandoned and can be acquired.
+
+const DEFAULT_LOCK_TIMEOUT_MS = 30_000
+
+export function acquireConversationLock(ctx: BotContext, staleTimeoutMs = DEFAULT_LOCK_TIMEOUT_MS): boolean {
+  if (ctx.processing && ctx.processingStartedAt) {
+    const elapsed = Date.now() - new Date(ctx.processingStartedAt).getTime()
+    if (elapsed < staleTimeoutMs) {
+      return false // Already processing, not stale
+    }
+    // Stale lock — reclaim it
+    console.log('[LOCK] stale lock detected, elapsed:', elapsed, 'ms')
+  }
+  ctx.processing = true
+  ctx.processingStartedAt = new Date().toISOString()
+  return true
+}
+
+export function releaseConversationLock(ctx: BotContext): void {
+  ctx.processing = false
+  ctx.processingStartedAt = undefined
+}
+
+// ── Product/Variant Resolution (dual lookup) ───────────────────
+// Supports: variantId → exact, productId + size/color → exact,
+// productName → fuzzy (legacy fallback)
+
+export function resolveProductVariant(
+  products: any[],
+  item: { productName?: string; productId?: string; variantId?: string; size?: string; color?: string }
+): { product: any; variant: any } | null {
+  // 1. Exact variant ID lookup
+  if (item.variantId) {
+    for (const p of products) {
+      const v = (p.variants ?? []).find((v: any) => v.id === item.variantId && v.is_active)
+      if (v) return { product: p, variant: v }
+    }
+    console.log('[RESOLVE] variantId not found:', item.variantId)
+    // Fall through to other methods
+  }
+
+  // 2. Product ID lookup
+  if (item.productId) {
+    const product = products.find((p: any) => p.id === item.productId)
+    if (product) {
+      const variant = product.variants?.find((v: any) =>
+        v.is_active &&
+        (!item.size || v.size?.toLowerCase() === item.size.toLowerCase()) &&
+        (!item.color || v.color?.toLowerCase() === item.color.toLowerCase())
+      ) ?? product.variants?.find((v: any) => v.is_active)
+      if (variant) return { product, variant }
+      console.log('[RESOLVE] product found but no matching variant:', product.name)
+      return null
+    }
+    console.log('[RESOLVE] productId not found:', item.productId)
+    return null
+  }
+
+  // 3. Legacy: fuzzy name matching
+  const productName = item.productName
+  if (!productName) return null
+  const product = products.find((p: any) =>
+    p.name.toLowerCase().includes(productName.toLowerCase())
+  )
+  if (!product) {
+    console.log('[RESOLVE] productName not found:', productName)
+    return null
+  }
+  const variant = product.variants?.find((v: any) =>
+    v.is_active &&
+    (!item.size || v.size?.toLowerCase() === item.size.toLowerCase()) &&
+    (!item.color || v.color?.toLowerCase() === item.color.toLowerCase())
+  ) ?? product.variants?.find((v: any) => v.is_active)
+  if (!variant) {
+    console.log('[RESOLVE] product found but no active variant:', product.name)
+    return null
+  }
+  return { product, variant }
+}
+
 // ── Checkout handler ────────────────────────────────────────────
 
 export interface CheckoutInput {
@@ -287,29 +370,13 @@ export async function handleCheckout(
   }> = []
 
   for (const item of items) {
-    // Find product by name (case-insensitive, partial match)
-    const product = allProducts.find((p: any) =>
-      p.name.toLowerCase().includes(item.productName.toLowerCase())
-    )
-    if (!product) {
-      console.log('[CHECKOUT] Product NOT FOUND', { searchedName: item.productName })
+    // Resolve product+variant via dual lookup (ID → name fallback)
+    const resolved = resolveProductVariant(allProducts, item)
+    if (!resolved) {
+      console.log('[CHECKOUT] Product NOT FOUND', { searchedName: item.productName, productId: item.productId, variantId: item.variantId })
       continue
     }
-
-    // Find matching variant (by size + color, or first active)
-    let variant = product.variants?.find((v: any) =>
-      v.is_active &&
-      (!item.size || v.size?.toLowerCase() === item.size?.toLowerCase()) &&
-      (!item.color || v.color?.toLowerCase() === item.color?.toLowerCase())
-    )
-    if (!variant) {
-      // Fallback to first active variant
-      variant = product.variants?.find((v: any) => v.is_active)
-    }
-    if (!variant) {
-      console.log('[CHECKOUT] Variant NOT FOUND for product', { productName: product.name, requested: { size: item.size, color: item.color } })
-      continue
-    }
+    const { product, variant } = resolved
 
     const price = variant.price_override ?? product.price
     const label = [variant.color, variant.size].filter(Boolean).join(' / ')

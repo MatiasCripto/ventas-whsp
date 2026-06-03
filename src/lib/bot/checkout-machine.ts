@@ -11,6 +11,8 @@ export interface CheckoutItem {
   quantity: number
   size?: string
   color?: string
+  productId?: string
+  variantId?: string
 }
 
 export interface CheckoutSession {

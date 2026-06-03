@@ -60,7 +60,7 @@ export interface BotContext {
   storeName?: string
   history?: Array<{ role: 'user' | 'assistant'; content: string }>
   // Checkout flow data (persisted in context JSONB)
-  checkoutItems?: Array<{ productName: string; quantity: number; size?: string; color?: string }>
+  checkoutItems?: Array<{ productName: string; quantity: number; size?: string; color?: string; productId?: string; variantId?: string }>
   checkoutName?: string
   checkoutDni?: string
   checkoutShippingMethod?: 'shipping' | 'pickup'
@@ -69,6 +69,9 @@ export interface BotContext {
   checkoutReferences?: string
   checkoutPickup?: boolean
   checkoutPaymentMethod?: 'transfer' | 'cash_on_delivery' | 'pickup_payment'
+  // Conversation lock (prevents concurrent webhook processing)
+  processing?: boolean
+  processingStartedAt?: string
   // Active order tracking (for post-checkout flow)
   activeOrderId?: string
   editableOrder?: boolean
