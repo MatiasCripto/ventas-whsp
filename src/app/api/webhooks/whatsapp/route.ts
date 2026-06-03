@@ -76,6 +76,11 @@ export async function POST(req: NextRequest) {
     const orgId = store.organization_id
     const storeId = store.id
 
+    // Resolve Evolution instance for multi-tenant support
+    const instanceName = payload.instance
+    const evoSend = (phone: string, text: string) => sendText(phone, text, undefined, instanceName)
+    const evoDownload = (jid: string, msgId: string) => downloadMedia(jid, msgId, instanceName)
+
     // Get or create conversation
     const { conversationId: cid, context: rawCtx, isNew } = await getOrCreateConversation(orgId, storeId, phone, pushName)
     conversationId = cid
@@ -137,7 +142,7 @@ export async function POST(req: NextRequest) {
       if (result.session.state === 'payment_waiting_proof' && !ctx.activeOrderId) {
         if (!ctx.customerId) {
           await saveMessage(conversationId, 'outbound', 'Error: no se encontró el cliente')
-          await sendText(phone, 'Hubo un error al procesar tu pedido. Hablanos con un asesor.')
+          await evoSend(phone, 'Hubo un error al procesar tu pedido. Hablanos con un asesor.')
           await updateContext(conversationId, ctx)
           return NextResponse.json({ ok: true })
         }
@@ -161,7 +166,7 @@ export async function POST(req: NextRequest) {
           await updateContext(conversationId, ctx)
           const errMsg = 'Hubo un error al crear tu pedido. Por favor hablanos con un asesor.'
           await saveMessage(conversationId, 'outbound', errMsg)
-          await sendText(phone, errMsg)
+          await evoSend(phone, errMsg)
           return NextResponse.json({ ok: true })
         }
 
@@ -196,7 +201,7 @@ export async function POST(req: NextRequest) {
 
         await updateContext(conversationId, ctx)
         await saveMessage(conversationId, 'outbound', bankMsg)
-        await sendText(phone, bankMsg)
+        await evoSend(phone, bankMsg)
         return NextResponse.json({ ok: true })
       }
 
@@ -204,7 +209,7 @@ export async function POST(req: NextRequest) {
       if (result.action?.type === 'checkout') {
         if (!ctx.customerId) {
           await saveMessage(conversationId, 'outbound', 'Error: no se encontró el cliente')
-          await sendText(phone, 'Hubo un error al procesar tu pedido. Hablanos con un asesor.')
+          await evoSend(phone, 'Hubo un error al procesar tu pedido. Hablanos con un asesor.')
           return NextResponse.json({ ok: true })
         }
 
@@ -246,7 +251,7 @@ export async function POST(req: NextRequest) {
               ? '📦 Te avisamos cuando esté listo para retirar.'
               : '📦 Te vamos a informar cuando esté en camino.')
           await saveMessage(conversationId, 'outbound', confirmMsg)
-          await sendText(phone, confirmMsg)
+          await evoSend(phone, confirmMsg)
           await updateContext(conversationId, ctx)
           return NextResponse.json({ ok: true })
         } else {
@@ -254,7 +259,7 @@ export async function POST(req: NextRequest) {
           await updateContext(conversationId, ctx)
           const errMsg = 'Hubo un error al crear tu pedido. Por favor hablanos con un asesor.'
           await saveMessage(conversationId, 'outbound', errMsg)
-          await sendText(phone, errMsg)
+          await evoSend(phone, errMsg)
           return NextResponse.json({ ok: true })
         }
       }
@@ -265,7 +270,7 @@ export async function POST(req: NextRequest) {
         await sb.from('conversations').update({ status: 'human', human_takeover: true }).eq('id', conversationId)
         const handoffMsg = 'Te paso con alguien del equipo para ayudarte.'
         await saveMessage(conversationId, 'outbound', handoffMsg)
-        await sendText(phone, handoffMsg)
+        await evoSend(phone, handoffMsg)
         await updateContext(conversationId, ctx)
         return NextResponse.json({ ok: true })
       }
@@ -287,7 +292,7 @@ export async function POST(req: NextRequest) {
         historyMsgs.push({ role: 'assistant', content: replyText })
         ctx.history = historyMsgs
         await saveMessage(conversationId, 'outbound', replyText)
-        await sendText(phone, replyText)
+        await evoSend(phone, replyText)
         await updateContext(conversationId, ctx)
         return NextResponse.json({ ok: true })
       }
@@ -298,7 +303,7 @@ export async function POST(req: NextRequest) {
       historyMsgs.push({ role: 'assistant', content: result.response })
       ctx.history = historyMsgs
       await saveMessage(conversationId, 'outbound', result.response)
-      await sendText(phone, result.response)
+      await evoSend(phone, result.response)
       await updateContext(conversationId, ctx)
       return NextResponse.json({ ok: true })
     }
@@ -310,16 +315,16 @@ export async function POST(req: NextRequest) {
       if (!jid || !msgId) return NextResponse.json({ ok: true })
 
       // Download the image from Evolution API
-      const imageBuffer = await downloadMedia(jid, msgId)
+      const imageBuffer = await evoDownload(jid, msgId)
       if (!imageBuffer) {
-        await sendText(phone, 'No pude descargar la imagen. ¿Podés intentar de nuevo?')
+        await evoSend(phone, 'No pude descargar la imagen. ¿Podés intentar de nuevo?')
         return NextResponse.json({ ok: true })
       }
 
       // Upload to Supabase Storage
       const imageUrl = await uploadPaymentProof(sb, ctx.activeOrderId, ctx.customerId!, imageBuffer, `proof_${Date.now()}.jpg`)
       if (!imageUrl) {
-        await sendText(phone, 'No pude guardar la imagen. ¿Podés intentar de nuevo?')
+        await evoSend(phone, 'No pude guardar la imagen. ¿Podés intentar de nuevo?')
         return NextResponse.json({ ok: true })
       }
 
@@ -368,7 +373,7 @@ export async function POST(req: NextRequest) {
 
       const confirmMsg = '¡Gracias! Recibí el comprobante 📸 Lo vamos a revisar y te avisamos cuando esté aprobado. 😊'
       await saveMessage(conversationId, 'outbound', confirmMsg)
-      await sendText(phone, confirmMsg)
+      await evoSend(phone, confirmMsg)
       await updateContext(conversationId, ctx)
       return NextResponse.json({ ok: true })
     }
@@ -432,7 +437,7 @@ export async function POST(req: NextRequest) {
       ]
       const fallback = fallbackMsgs[Math.floor(Math.random() * fallbackMsgs.length)]
       await saveMessage(conversationId, 'outbound', fallback)
-      await sendText(phone, fallback)
+      await evoSend(phone, fallback)
       return NextResponse.json({ ok: true })
     }
 
@@ -482,7 +487,7 @@ export async function POST(req: NextRequest) {
           session.items.map(i => buildProductPresentation(i.productName, i.color, i.quantity, i.size)).join('\n') +
           `\n\n¿Está todo bien para generar el pedido?`
         await saveMessage(conversationId, 'outbound', confirmMsg)
-        await sendText(phone, confirmMsg)
+        await evoSend(phone, confirmMsg)
         await updateContext(conversationId, ctx)
         return NextResponse.json({ ok: true })
       }
@@ -490,7 +495,7 @@ export async function POST(req: NextRequest) {
       // Use the first question from the state machine
       const firstQuestion = getFirstQuestion(session.state)
       await saveMessage(conversationId, 'outbound', firstQuestion)
-      await sendText(phone, firstQuestion)
+      await evoSend(phone, firstQuestion)
       await updateContext(conversationId, ctx)
       return NextResponse.json({ ok: true })
     }
@@ -514,7 +519,7 @@ export async function POST(req: NextRequest) {
       }
 
       await saveMessage(conversationId, 'outbound', bankMsg)
-      await sendText(phone, bankMsg)
+      await evoSend(phone, bankMsg)
       await updateContext(conversationId, ctx)
       return NextResponse.json({ ok: true })
     }
@@ -541,7 +546,7 @@ export async function POST(req: NextRequest) {
       }
 
       await saveMessage(conversationId, 'outbound', bankMsg)
-      await sendText(phone, bankMsg)
+      await evoSend(phone, bankMsg)
       await updateContext(conversationId, ctx)
       return NextResponse.json({ ok: true })
     }
@@ -558,7 +563,7 @@ export async function POST(req: NextRequest) {
         const errMsg = `El pedido ya está "${orderCheck.status}" y no se puede modificar. ¿Querés que te prepare un pedido nuevo con esos productos?`
         historyMsgs.push({ role: 'assistant', content: errMsg })
         await saveMessage(conversationId, 'outbound', errMsg)
-        await sendText(phone, errMsg)
+        await evoSend(phone, errMsg)
         await updateContext(conversationId, ctx)
         return NextResponse.json({ ok: true })
       }
@@ -568,7 +573,7 @@ export async function POST(req: NextRequest) {
         const errMsg = 'No entendí qué producto querés agregar. ¿Me decís nombre, talle y color?'
         historyMsgs.push({ role: 'assistant', content: errMsg })
         await saveMessage(conversationId, 'outbound', errMsg)
-        await sendText(phone, errMsg)
+        await evoSend(phone, errMsg)
         await updateContext(conversationId, ctx)
         return NextResponse.json({ ok: true })
       }
@@ -615,7 +620,7 @@ export async function POST(req: NextRequest) {
         console.log('[WEBHOOK] add_to_order: NO items inserted')
         historyMsgs.push({ role: 'assistant', content: errMsg })
         await saveMessage(conversationId, 'outbound', errMsg)
-        await sendText(phone, errMsg)
+        await evoSend(phone, errMsg)
         await updateContext(conversationId, ctx)
         return NextResponse.json({ ok: true })
       }
@@ -645,7 +650,7 @@ export async function POST(req: NextRequest) {
       const okMsg = 'Listo, se agregaron los productos a tu pedido. ¿Algo más o lo dejamos así?'
       historyMsgs.push({ role: 'assistant', content: okMsg })
       await saveMessage(conversationId, 'outbound', okMsg)
-      await sendText(phone, okMsg)
+      await evoSend(phone, okMsg)
       await updateContext(conversationId, ctx)
       return NextResponse.json({ ok: true })
     }
@@ -662,7 +667,7 @@ export async function POST(req: NextRequest) {
         const errMsg = 'El pedido ya esta "' + orderCheck.status + '" y no se puede modificar.'
         historyMsgs.push({ role: 'assistant', content: errMsg })
         await saveMessage(conversationId, 'outbound', errMsg)
-        await sendText(phone, errMsg)
+        await evoSend(phone, errMsg)
         await updateContext(conversationId, ctx)
         return NextResponse.json({ ok: true })
       }
@@ -672,7 +677,7 @@ export async function POST(req: NextRequest) {
         const errMsg = 'No entendi que producto queres sacar. Me decis el nombre?'
         historyMsgs.push({ role: 'assistant', content: errMsg })
         await saveMessage(conversationId, 'outbound', errMsg)
-        await sendText(phone, errMsg)
+        await evoSend(phone, errMsg)
         await updateContext(conversationId, ctx)
         return NextResponse.json({ ok: true })
       }
@@ -716,7 +721,7 @@ export async function POST(req: NextRequest) {
         const errMsg = 'No encontre ese producto en tu pedido. Los productos que tenes son: ' + productList
         historyMsgs.push({ role: 'assistant', content: errMsg })
         await saveMessage(conversationId, 'outbound', errMsg)
-        await sendText(phone, errMsg)
+        await evoSend(phone, errMsg)
         await updateContext(conversationId, ctx)
         return NextResponse.json({ ok: true })
       }
@@ -745,7 +750,7 @@ export async function POST(req: NextRequest) {
       const okMsg = 'Listo, saque del pedido: ' + removedNames.join(', ') + '. Algo mas o lo dejamos asi?'
       historyMsgs.push({ role: 'assistant', content: okMsg })
       await saveMessage(conversationId, 'outbound', okMsg)
-      await sendText(phone, okMsg)
+      await evoSend(phone, okMsg)
       await updateContext(conversationId, ctx)
       return NextResponse.json({ ok: true })
     }
@@ -825,7 +830,7 @@ export async function POST(req: NextRequest) {
               // Fallback succeeded — send the AI's response (it already said it added the item)
               // and return early to prevent falling through to safety check
               await saveMessage(conversationId, 'outbound', response.message!)
-              await sendText(phone, response.message!)
+              await evoSend(phone, response.message!)
               await updateContext(conversationId, ctx)
               return NextResponse.json({ ok: true })
             }
@@ -845,7 +850,7 @@ export async function POST(req: NextRequest) {
       safeMessage = 'Dale, decime cómo puedo ayudarte.'
     }
     await saveMessage(conversationId, 'outbound', safeMessage)
-    await sendText(phone, safeMessage)
+    await evoSend(phone, safeMessage)
     await updateContext(conversationId, ctx)
 
     return NextResponse.json({ ok: true })

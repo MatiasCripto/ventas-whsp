@@ -23,6 +23,25 @@ export async function updateSession(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
+  // Superadmin route protection
+  if (request.nextUrl.pathname.startsWith('/superadmin')) {
+    if (!user) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      return NextResponse.redirect(url)
+    }
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+    if (!profile || profile.role !== 'superadmin') {
+      const url = request.nextUrl.clone()
+      url.pathname = '/overview'
+      return NextResponse.redirect(url)
+    }
+  }
+
   const isAuthRoute   = request.nextUrl.pathname.startsWith('/login') ||
                         request.nextUrl.pathname.startsWith('/register')
   const isApiRoute    = request.nextUrl.pathname.startsWith('/api/')
