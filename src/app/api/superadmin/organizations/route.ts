@@ -44,16 +44,16 @@ export async function GET(req: NextRequest) {
       customerCounts.set(c.organization_id, (customerCounts.get(c.organization_id) ?? 0) + 1)
     }
 
-    const enriched = orgs.map((org: any) => ({
+    const enriched = orgs.map((org: Record<string, unknown>) => ({
       id: org.id,
       name: org.name,
       slug: org.slug,
       active: org.active,
       created_at: org.created_at,
-      stores_count: (org.stores as any[])?.[0]?.count ?? 0,
-      profiles_count: (org.profiles as any[])?.[0]?.count ?? 0,
-      orders_count: orderCounts.get(org.id) ?? 0,
-      customers_count: customerCounts.get(org.id) ?? 0,
+      stores_count: (org.stores as { count?: number }[])?.[0]?.count ?? 0,
+      profiles_count: (org.profiles as { count?: number }[])?.[0]?.count ?? 0,
+      orders_count: orderCounts.get(org.id as string) ?? 0,
+      customers_count: customerCounts.get(org.id as string) ?? 0,
     }))
 
     return NextResponse.json(enriched)
@@ -67,14 +67,18 @@ export async function POST(req: NextRequest) {
   const auth = await verifySuperadmin(req)
   if (!auth.authorized) return auth.response
 
-  let body: any
+  let body: Record<string, unknown>
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { org_name, store_name, rubro, owner_email, owner_name, ai_provider, ai_api_key, ai_model } = body
+  const {
+    org_name, store_name, rubro,
+    owner_email, owner_name,
+    ai_provider, ai_api_key, ai_model,
+  } = body as Record<string, string | undefined>
   if (!org_name || !store_name || !owner_email || !owner_name) {
     return NextResponse.json({ error: 'Missing required fields: org_name, store_name, owner_email, owner_name' }, { status: 400 })
   }

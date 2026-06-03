@@ -130,7 +130,7 @@ export async function DELETE(
     // Delete auth users (best effort)
     if (profiles) {
       for (const p of profiles) {
-        await sb.auth.admin.deleteUser(p.id).catch(() => {})
+        await sb.auth.admin.deleteUser(p.id).catch((err) => console.error('[SUPERADMIN] failed to delete auth user:', p.id, err))
       }
     }
 

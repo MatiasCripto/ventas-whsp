@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
     if (!org || org.active === false) {
       console.log('[WEBHOOK] inactive org — ignoring message:', orgId)
-      await evoSend(phone, '⚠️ Esta tienda se encuentra desactivada. Para más información, contacte al administrador.').catch(() => {})
+      await evoSend(phone, '⚠️ Esta tienda se encuentra desactivada. Para más información, contacte al administrador.').catch((err) => console.warn('[WEBHOOK] inactive org send failed:', err))
       return NextResponse.json({ ok: true })
     }
 

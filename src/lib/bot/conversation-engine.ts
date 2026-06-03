@@ -2,6 +2,7 @@
 // Manages conversation state, persistence, and customer lookup
 
 import { createServiceClient } from '@/lib/supabase/service'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { BotContext } from '@/lib/types/whatsapp.types'
 import { recordOrderEvent } from '@/lib/services/order-event.service'
 import { reserveStockForOrder } from '@/lib/services/stock-reservation.service'
@@ -111,7 +112,7 @@ export async function updateContext(convId: string, ctx: BotContext) {
 
 // ── Data fetching for AI context ──────────────────────────────
 
-export async function fetchProducts(sb: any, orgId: string) {
+export async function fetchProducts(sb: SupabaseClient, orgId: string) {
   const { data } = await sb.from('products')
     .select(`
       id, name, slug, description, price, compare_price,
@@ -142,7 +143,7 @@ export interface SearchProductsParams {
   tags?: string[]
 }
 
-export async function searchProducts(sb: any, orgId: string, params: SearchProductsParams) {
+export async function searchProducts(sb: SupabaseClient, orgId: string, params: SearchProductsParams) {
   let query = sb.from('products')
     .select(`
       id, name, slug, description, price, compare_price,
@@ -178,7 +179,7 @@ export async function searchProducts(sb: any, orgId: string, params: SearchProdu
   })) ?? []
 }
 
-export async function fetchCustomerOrders(sb: any, orgId: string, customerId: string) {
+export async function fetchCustomerOrders(sb: SupabaseClient, orgId: string, customerId: string) {
   const { data } = await sb.from('orders')
     .select(`
       id, status, total, payment_status, tracking_number,
@@ -199,7 +200,7 @@ export async function fetchCustomerOrders(sb: any, orgId: string, customerId: st
   return data ?? []
 }
 
-export async function fetchCustomerHistory(sb: any, orgId: string, customerId: string) {
+export async function fetchCustomerHistory(sb: SupabaseClient, orgId: string, customerId: string) {
   const { data } = await sb.from('orders')
     .select(`
       created_at, status,
@@ -232,7 +233,7 @@ export async function fetchCustomerHistory(sb: any, orgId: string, customerId: s
   return history
 }
 
-export async function fetchCart(sb: any, customerId: string) {
+export async function fetchCart(sb: SupabaseClient, customerId: string) {
   const { data } = await sb.from('carts')
     .select(`
       id,
@@ -266,7 +267,7 @@ export async function fetchCart(sb: any, customerId: string) {
   return { id: data.id, items, total }
 }
 
-export async function fetchCoupons(sb: any, orgId: string) {
+export async function fetchCoupons(sb: SupabaseClient, orgId: string) {
   const { data } = await sb.from('coupons')
     .select('code, discount_type, discount_value, min_purchase, expires_at')
     .eq('organization_id', orgId)
@@ -373,7 +374,7 @@ export interface StockCheckResult {
   insufficientItems: Array<{ variantId: string; productName: string; requested: number; available: number }>
 }
 
-export async function checkStockAvailability(sb: any, orgId: string, items: StockCheckItem[]): Promise<StockCheckResult> {
+export async function checkStockAvailability(sb: SupabaseClient, orgId: string, items: StockCheckItem[]): Promise<StockCheckResult> {
   const insufficientItems: Array<{ variantId: string; productName: string; requested: number; available: number }> = []
 
   for (const item of items) {
@@ -417,7 +418,7 @@ export interface CheckoutResult {
 }
 
 export async function handleCheckout(
-  sb: any,
+  sb: SupabaseClient,
   orgId: string,
   storeId: string | null,
   customerId: string,
@@ -494,7 +495,7 @@ export async function handleCheckout(
   }
 
   // Create order
-  const orderPayload: Record<string, any> = {
+  const orderPayload: Record<string, unknown> = {
     organization_id: orgId,
     store_id: storeId,
     customer_id: customerId,
