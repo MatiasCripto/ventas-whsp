@@ -4,7 +4,7 @@
 
 import { buildProductPresentation } from '@/lib/bot/product-emoji-map'
 
-export type CheckoutState = 'idle' | 'name' | 'dni' | 'shipping' | 'address' | 'payment_method' | 'payment_waiting_proof' | 'confirm' | 'completed'
+export type CheckoutState = 'idle' | 'name' | 'dni' | 'shipping' | 'address' | 'payment_method' | 'payment_waiting_proof' | 'proof_received' | 'confirm' | 'completed'
 
 export interface CheckoutItem {
   productName: string
@@ -175,6 +175,8 @@ export function processCheckoutMessage(
       return handlePaymentMethodState(trimmed, session)
     case 'payment_waiting_proof':
       return handlePaymentWaitingProofState(trimmed, session)
+    case 'proof_received':
+      return { session, response: AI_GENERATE }
     case 'confirm':
       return handleConfirmState(trimmed, session)
     case 'completed':
@@ -362,8 +364,6 @@ function handlePaymentMethodState(text: string, session: CheckoutSession): Check
 }
 
 function handlePaymentWaitingProofState(text: string, session: CheckoutSession): CheckoutResult {
-  // User already chose transfer — they should send a proof image
-  // If they say "ok" or "si", confirm and wait for proof
   if (CONFIRM_WORDS.test(text)) {
     return {
       session,
@@ -372,7 +372,6 @@ function handlePaymentWaitingProofState(text: string, session: CheckoutSession):
   }
 
   if (DENY_WORDS.test(text)) {
-    // User changed mind about payment method — go back
     const nextSession: CheckoutSession = {
       ...session,
       state: 'payment_method',
@@ -384,10 +383,32 @@ function handlePaymentWaitingProofState(text: string, session: CheckoutSession):
     }
   }
 
-  // Let AI handle any other response naturally
+  // Si el usuario dice que ya envió el comprobante
+  const PROOF_SENT = /(ya (te )?(lo |la )?(mand[eé]|envi[eé]|pas[eé]|subi[eé])|te lo mand[eé]|lo envi[eé]|comprobante enviado|ya pagu[eé]|ya transfer[ií])/i
+  if (PROOF_SENT.test(text)) {
+    const nextSession: CheckoutSession = {
+      ...session,
+      state: 'proof_received',
+    }
+    return {
+      session: nextSession,
+      response: 'Perfecto, ya lo recibí 👍 En cuanto se acredite la transferencia te confirmo y despachamos el pedido.',
+    }
+  }
+
+  // Si el usuario pregunta sobre productos u otras cosas
+  const PRODUCT_QUESTION = /(qu[eé] (m[aá]s|otro|ten[eé]s|productos|hay)|cat[aá]logo|mostrame|productos)/i
+  if (PRODUCT_QUESTION.test(text)) {
+    return {
+      session,
+      response: 'Cuando quieras te cuento más sobre los productos 😊 Pero primero terminemos con el pago — enviame el comprobante de la transferencia cuando lo hagas 📸',
+    }
+  }
+
+  // Para cualquier otro texto, recordar que esperamos el comprobante
   return {
     session,
-    response: AI_GENERATE,
+    response: 'Cuando hagas la transferencia enviame el comprobante por acá 📸 Si querés cambiar el método de pago decime "no" y elegimos otro.',
   }
 }
 

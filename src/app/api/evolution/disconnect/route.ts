@@ -1,21 +1,14 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
-import { requireOrgAccess } from '@/lib/auth/require-org'
+import { NextResponse } from 'next/server'
+import { logoutInstance } from '@/lib/evolution/evolution-api'
 
-const BASE_URL = process.env.EVOLUTION_API_URL ?? 'http://localhost:8080'
-const API_KEY  = process.env.EVOLUTION_API_KEY  ?? ''
-const INSTANCE = process.env.EVOLUTION_INSTANCE ?? 'concierge'
-
-export async function GET(req: NextRequest) {
-  const auth = await requireOrgAccess(req)
-  if (!auth.authorized) return auth.response
+export async function GET() {
+  const instanceName = process.env.EVOLUTION_INSTANCE || 'concierge-wpp'
 
   try {
-    const res = await fetch(`${BASE_URL}/instance/logout/${INSTANCE}`, {
-      headers: { apikey: API_KEY },
-    })
-    const data = await res.json()
-    return NextResponse.json(data)
+    await logoutInstance(instanceName)
+    return NextResponse.json({ ok: true })
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 })
+    console.error('[EVO DISCONNECT]', err)
+    return NextResponse.json({ ok: true })
   }
 }

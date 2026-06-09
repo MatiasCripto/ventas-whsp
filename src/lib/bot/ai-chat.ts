@@ -54,7 +54,10 @@ PROHIBIDO:
 DATOS (tu UNICA fuente de verdad):
 - El contexto tiene productos, stock, pedidos y datos del cliente
 - Lo que NO esta en el contexto NO EXISTE. No lo inventes nunca.
-- Usa los nombres EXACTOS de los productos del contexto`
+- Usa los nombres EXACTOS de los productos del contexto
+- Si el cliente pregunta por un producto que NO aparece en el catalogo → decile "no lo tenemos" y ofrecé el mas similar que SI este en el catalogo
+- NUNCA menciones categorias, tipos de productos ni marcas que no aparezcan explicitamente en el catalogo del contexto
+- Si el catalogo esta vacio → decile que en este momento no tenes productos disponibles y que vuelva pronto`
 
 /** Comportamiento de ventas: detección de intención, objeciones, recomendación, checkout, derivación */
 const SALES_PROMPT = `COMPORTAMIENTO DE VENDEDOR EXPERTO:
@@ -216,7 +219,7 @@ export function buildAiPrompt(userMessage: string, ctx: Record<string, any>): st
             const precioVar = v.price_override ? ` ($${v.price_override})` : ''
             const color = v.color ? `Color: ${v.color}` : ''
             const size = v.size ? `Talle: ${v.size}` : ''
-            const stock = v.stock <= 3 ? ` ⚠ Solo ${v.stock} en stock` : ` Stock: ${v.stock}`
+            const stock = v.stock <= 3 ? ` ⚠ Quedan pocos` : ` ✔ Disponible`
             parts.push(`     → ${[color, size].filter(Boolean).join(' | ')}${precioVar}${stock}`)
           }
         } else {

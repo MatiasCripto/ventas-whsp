@@ -1,5 +1,4 @@
 // Evolution API client — wraps HTTP calls to the Evolution API instance
-import type { SendTextPayload } from '@/lib/types/whatsapp.types'
 
 const BASE_URL = process.env.EVOLUTION_API_URL ?? 'http://localhost:8080'
 const API_KEY  = process.env.EVOLUTION_API_KEY  ?? ''
@@ -28,12 +27,11 @@ async function evolutionFetch(path: string, body?: unknown, instanceName?: strin
 
 export async function sendText(phone: string, text: string, delay = 1200, instanceName?: string) {
   const instance = resolveInstance(instanceName)
-  const payload: SendTextPayload = {
+  return evolutionFetch(`/message/sendText/${instance}`, {
     number: phone,
-    textMessage: { text },
-    options: { delay, presence: 'composing' },
-  }
-  return evolutionFetch(`/message/sendText/${instance}`, payload)
+    text,
+    delay,
+  })
 }
 
 export async function sendMultiple(phone: string, messages: string[], delayBetween = 1500, instanceName?: string) {
@@ -77,12 +75,10 @@ export async function sendImage(
   const instance = resolveInstance(instanceName)
   return evolutionFetch(`/message/sendMedia/${instance}`, {
     number: phone,
-    mediaMessage: {
-      mediatype: 'image',
-      media: imageUrl,
-      caption: caption ?? '',
-    },
-    options: { delay, presence: 'composing' },
+    mediatype: 'image',
+    media: imageUrl,
+    caption: caption ?? '',
+    delay,
   })
 }
 

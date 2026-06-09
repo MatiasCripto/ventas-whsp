@@ -36,7 +36,7 @@ export default function CustomersPage() {
         setCustomers((data ?? []) as Customer[])
         setTotal(count ?? 0)
       } catch {
-        // Dev mode â€” empty state
+        // Dev mode — empty state
       }
       setLoading(false)
     }
@@ -58,7 +58,7 @@ export default function CustomersPage() {
         <Search size={16} style={{ color: 'var(--muted)' }} />
         <input
           type="text"
-          placeholder="Buscar por nombre, telÃ©fono o email..."
+          placeholder="Buscar por nombre, teléfono o email..."
           value={search}
           onChange={e => { setSearch(e.target.value); setPage(0) }}
           className="flex-1 bg-transparent text-sm outline-none"
@@ -70,7 +70,7 @@ export default function CustomersPage() {
         <div className="text-sm" style={{ color: 'var(--muted)' }}>Cargando...</div>
       ) : customers.length === 0 ? (
         <div className="card p-8 text-center">
-          <p className="text-sm" style={{ color: 'var(--muted)' }}>{search ? 'Sin resultados' : 'No hay clientes todavÃ­a'}</p>
+          <p className="text-sm" style={{ color: 'var(--muted)' }}>{search ? 'Sin resultados' : 'No hay clientes todavía'}</p>
         </div>
       ) : (
         <>
@@ -80,9 +80,9 @@ export default function CustomersPage() {
                 <tr style={{ background: 'var(--surface-2)' }}>
                   <th className="text-left px-4 py-3 font-medium">Cliente</th>
                   <th className="text-left px-4 py-3 font-medium">Contacto</th>
-                  <th className="text-right px-4 py-3 font-medium">Ã“rdenes</th>
+                  <th className="text-right px-4 py-3 font-medium">Órdenes</th>
                   <th className="text-right px-4 py-3 font-medium">Gasto Total</th>
-                  <th className="text-right px-4 py-3 font-medium">Ãšltima Compra</th>
+                  <th className="text-right px-4 py-3 font-medium">Última Compra</th>
                 </tr>
               </thead>
               <tbody>
@@ -103,7 +103,7 @@ export default function CustomersPage() {
                     <td className="px-4 py-3 text-right">{c.total_orders}</td>
                     <td className="px-4 py-3 text-right font-medium">{formatCurrency(c.lifetime_value)}</td>
                     <td className="px-4 py-3 text-right" style={{ color: 'var(--muted)' }}>
-                      {c.last_order_at ? formatDate(c.last_order_at) : 'â€”'}
+                      {c.last_order_at ? formatDate(c.last_order_at) : '—'}
                     </td>
                   </tr>
                 ))}

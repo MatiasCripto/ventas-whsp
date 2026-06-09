@@ -72,8 +72,15 @@ export async function validateWebhookPayload(req: NextRequest): Promise<
   }
 
   // 5. Extract phone and text
-  const jid = data.key?.remoteJid ?? ''
-  const phone = jid.replace(/@s\.whatsapp\.net$/, '').replace(/@c\.us$/, '')
+  // Handle @lid JID format (LinkedIn Device ID) by falling back to top-level sender field
+  let jid = data.key?.remoteJid ?? ''
+  let phone = jid.replace(/@s\.whatsapp\.net$/, '').replace(/@c\.us$/, '').replace(/@lid$/, '')
+  // If @lid format produced no extractable number, use the top-level sender field
+  if (!phone || jid.endsWith('@lid')) {
+    const senderJid = (payload as any).sender ?? ''
+    phone = senderJid.replace(/@s\.whatsapp\.net$/, '').replace(/@c\.us$/, '') || phone
+    if (senderJid) jid = senderJid // prefer sender JID for downstream use
+  }
   const text = data.message?.conversation || data.message?.extendedTextMessage?.text || ''
   const pushName = data.pushName
   const msgId = data.key?.id

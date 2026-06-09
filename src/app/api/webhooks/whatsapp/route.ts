@@ -40,7 +40,6 @@ export async function POST(req: NextRequest) {
   let ctx!: BotContext
   let conversationId: string | undefined
   try {
-    // Validate payload via the shared validator (HMAC, parse, rate limit)
     const validated = await validateWebhookPayload(req)
     if (!validated.ok) return validated.response
 
