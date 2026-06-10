@@ -118,7 +118,7 @@ export async function fetchProducts(sb: SupabaseClient, orgId: string) {
       id, name, slug, description, price, compare_price,
       brand, tags, images, category_id, featured,
       variants:product_variants(
-        id, sku, color, size, stock, price_override, images, is_active
+        id, sku, attribute_values, stock, price_override, images, is_active
       )
     `)
     .eq('organization_id', orgId)
@@ -149,7 +149,7 @@ export async function searchProducts(sb: SupabaseClient, orgId: string, params: 
       id, name, slug, description, price, compare_price,
       brand, tags, images, category_id, featured,
       variants:product_variants(
-        id, sku, color, size, stock, price_override, images, is_active
+        id, sku, attribute_values, stock, price_override, images, is_active
       )
     `)
     .eq('organization_id', orgId)
@@ -187,7 +187,7 @@ export async function fetchCustomerOrders(sb: SupabaseClient, orgId: string, cus
       items:order_items(
         id, product_name, variant_label, quantity, unit_price, total, variant_id,
         variant:product_variants(
-          color, size,
+          attribute_values,
           product:products(name, images)
         )
       )
@@ -207,7 +207,7 @@ export async function fetchCustomerHistory(sb: SupabaseClient, orgId: string, cu
       items:order_items(
         quantity, unit_price,
         variant:product_variants(
-          color, size,
+          attribute_values,
           product:products(name)
         )
       )
@@ -223,8 +223,7 @@ export async function fetchCustomerHistory(sb: SupabaseClient, orgId: string, cu
     o.items?.forEach((i: any) => {
       history.push({
         productName: i.variant?.product?.name,
-        size: i.variant?.size,
-        color: i.variant?.color,
+        attribute_values: i.variant?.attribute_values,
         quantity: i.quantity,
         date: o.created_at?.slice(0, 10),
       })
@@ -240,7 +239,7 @@ export async function fetchCart(sb: SupabaseClient, customerId: string) {
       items:cart_items(
         id, quantity,
         variant:product_variants(
-          id, color, size, stock, price_override,
+          id, attribute_values, stock, price_override,
           product:products(id, name, price, images)
         )
       )
@@ -255,8 +254,7 @@ export async function fetchCart(sb: SupabaseClient, customerId: string) {
     id: i.id,
     variantId: i.variant?.id,
     productName: i.variant?.product?.name,
-    color: i.variant?.color,
-    size: i.variant?.size,
+    attribute_values: i.variant?.attribute_values,
     stock: i.variant?.stock,
     quantity: i.quantity,
     price: i.variant?.price_override ?? i.variant?.product?.price,
@@ -309,7 +307,7 @@ export function releaseConversationLock(ctx: BotContext): void {
 
 export function resolveProductVariant(
   products: any[],
-  item: { productName?: string; productId?: string; variantId?: string; size?: string; color?: string }
+  item: { productName?: string; productId?: string; variantId?: string; attribute_values?: Record<string, string> }
 ): { product: any; variant: any } | null {
   // 1. Exact variant ID lookup
   if (item.variantId) {
@@ -327,8 +325,8 @@ export function resolveProductVariant(
     if (product) {
       const variant = product.variants?.find((v: any) =>
         v.is_active &&
-        (!item.size || v.size?.toLowerCase() === item.size.toLowerCase()) &&
-        (!item.color || v.color?.toLowerCase() === item.color.toLowerCase())
+        (!item.attribute_values || Object.entries(item.attribute_values).every(([key, val]) =>
+          v.attribute_values?.[key]?.toLowerCase() === val.toLowerCase()))
       ) ?? product.variants?.find((v: any) => v.is_active)
       if (variant) return { product, variant }
       console.log('[RESOLVE] product found but no matching variant:', product.name)
@@ -350,8 +348,8 @@ export function resolveProductVariant(
   }
   const variant = product.variants?.find((v: any) =>
     v.is_active &&
-    (!item.size || v.size?.toLowerCase() === item.size.toLowerCase()) &&
-    (!item.color || v.color?.toLowerCase() === item.color.toLowerCase())
+    (!item.attribute_values || Object.entries(item.attribute_values).every(([key, val]) =>
+          v.attribute_values?.[key]?.toLowerCase() === val.toLowerCase()))
   ) ?? product.variants?.find((v: any) => v.is_active)
   if (!variant) {
     console.log('[RESOLVE] product found but no active variant:', product.name)
@@ -429,7 +427,7 @@ export async function handleCheckout(
 
   // Look up all products to match by name
   const { data: allProducts } = await sb.from('products')
-    .select('id, name, price, variants:product_variants(id, color, size, stock, price_override, is_active)')
+    .select('id, name, price, variants:product_variants(id, attribute_values, stock, price_override, is_active)')
     .eq('organization_id', orgId)
     .eq('is_active', true)
 
@@ -463,7 +461,7 @@ export async function handleCheckout(
     const { product, variant } = resolved
 
     const price = variant.price_override ?? product.price
-    const label = [variant.color, variant.size].filter(Boolean).join(' / ')
+    const label = variant.attribute_values ? Object.values(variant.attribute_values).filter(Boolean).join(' / ') : ''
 
     console.log('[CHECKOUT] Item matched', { productName: product.name, variantId: variant.id, price, label, quantity: item.quantity })
 

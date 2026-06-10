@@ -98,18 +98,16 @@ export function getColorEmoji(color?: string): string {
   return ''
 }
 
-/** Build a clean product presentation line: "👕 Remera Oversize (talle M) x1" */
+/** Build a clean product presentation line: "👕 Producto (Color: Rojo / Talle: M) x1" */
 export function buildProductPresentation(
   productName: string,
-  color?: string,
   quantity?: number,
-  size?: string,
+  attribute_values?: Record<string, string>,
 ): string {
   const emoji = getProductEmoji(productName)
-  const colorEmoji = getColorEmoji(color)
   const parts = [emoji, productName]
-  if (size) parts.push(`(talle ${size})`)
-  if (color) parts.push(colorEmoji ? `(${colorEmoji} ${color})` : `(${color})`)
+  const label = attribute_values ? Object.values(attribute_values).filter(Boolean).join(' / ') : ''
+  if (label) parts.push(`(${label})`)
   if (quantity && quantity > 0) parts.push(`x${quantity}`)
   return parts.join(' ')
 }

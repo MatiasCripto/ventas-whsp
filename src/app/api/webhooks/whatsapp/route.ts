@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendText, downloadMedia } from '@/lib/bot/evolution-client'
+import { getProductImages, sendProductImages } from '@/lib/bot/product-images'
 import {
   getOrCreateConversation, saveMessage, updateContext,
   fetchProducts, fetchCustomerOrders, fetchCustomerHistory,
@@ -47,10 +48,6 @@ export async function POST(req: NextRequest) {
     const data = payload.data as EvolutionMessageData
     console.log('[WEBHOOK] msg from:', phone, 'text:', text.slice(0, 60))
 
-    // Normalize common color typos (e.g. "Balnco" -> "blanco")
-    function normalizeColor(c: string): string {
-      return c.toLowerCase().replace(/^b(al)nco$/i, 'blanco').replace(/^gris$/i, 'gris')
-    }
 
     // Find org by Evolution instance
     const sb = createServiceClient()
@@ -87,12 +84,12 @@ export async function POST(req: NextRequest) {
 
     // Check if organization is active
     const { data: org } = await sb.from('organizations')
-      .select('active, name')
+      .select('active, name, settings')
       .eq('id', orgId)
       .maybeSingle()
     if (!org || org.active === false) {
       console.log('[WEBHOOK] inactive org — ignoring message:', orgId)
-      await evoSend(phone, '⚠️ Esta tienda se encuentra desactivada. Para más información, contacte al administrador.').catch((err) => console.warn('[WEBHOOK] inactive org send failed:', err))
+      await evoSend(phone, `⚠️ ${store.name} se encuentra desactivada por el momento. Para más información, contacte al administrador.`).catch((err) => console.warn('[WEBHOOK] inactive org send failed:', err))
       return NextResponse.json({ ok: true })
     }
 
@@ -137,6 +134,7 @@ export async function POST(req: NextRequest) {
         references: ctx.checkoutReferences ?? undefined,
         pickup: ctx.checkoutPickup ?? false,
         paymentMethod: ctx.checkoutPaymentMethod ?? undefined,
+        storeName: store.name,
       }
 
       const result = processCheckoutMessage(text, session)
@@ -371,6 +369,8 @@ export async function POST(req: NextRequest) {
       activeOrderStatus = activeOrder?.status ?? undefined
     }
 
+    const orgSettings = (org?.settings ?? {}) as Record<string, unknown>
+
     const aiCtx: Record<string, any> = {
       storeName: store.name,
       customerName: ctx.customerName,
@@ -383,6 +383,7 @@ export async function POST(req: NextRequest) {
       activeOrderId: ctx.activeOrderId ?? undefined,
       activeOrderStatus,
       activeOrderDetails,
+      orgSettings,
     }
 
     // Generate AI response
@@ -442,7 +443,7 @@ export async function POST(req: NextRequest) {
       if (session.state === 'confirm') {
         const confirmMsg =
           `Perfecto. Confirmamos:\n\n` +
-          session.items.map(i => buildProductPresentation(i.productName, i.color, i.quantity, i.size)).join('\n') +
+          session.items.map(i => buildProductPresentation(i.productName, i.quantity, i.attribute_values)).join('\n') +
           `\n\n¿Está todo bien para generar el pedido?`
         await saveMessage(conversationId, 'outbound', confirmMsg)
         await evoSend(phone, confirmMsg)
@@ -548,17 +549,17 @@ export async function POST(req: NextRequest) {
         const { product: productMatch, variant } = resolved
         console.log('[WEBHOOK] add_to_order: product found', productMatch.name, 'for', item.productName)
         if (!variant) {
-          console.log('[WEBHOOK] add_to_order: variant NOT FOUND for', productMatch.name, 'color:', item.color, 'size:', item.size, 'available:', productMatch.variants?.map((v: any) => `${v.color}/${v.size}(${v.is_active ? 'active' : 'inactive'})`).join(', '))
+          console.log('[WEBHOOK] add_to_order: variant NOT FOUND for', productMatch.name, 'attrs:', item.attribute_values, 'available:', productMatch.variants?.map((v: any) => `${Object.values(v.attribute_values ?? {}).join('/')}(${v.is_active ? 'active' : 'inactive'})`).join(', '))
           continue
         }
-        console.log('[WEBHOOK] add_to_order: variant found', variant.id, 'color:', variant.color, 'size:', variant.size)
+        console.log('[WEBHOOK] add_to_order: variant found', variant.id, 'attrs:', variant.attribute_values)
 
         const unitPrice = variant.price_override ?? productMatch.price
         const { error } = await sb.from('order_items').insert({
           order_id: ctx.activeOrderId,
           variant_id: variant.id,
           product_name: productMatch.name,
-          variant_label: [variant.color, variant.size].filter(Boolean).join(' / '),
+          variant_label: Object.values(variant.attribute_values ?? {}).filter(Boolean).join(' / '),
           quantity: item.quantity ?? 1,
           unit_price: unitPrice,
           total: (item.quantity ?? 1) * unitPrice,
@@ -711,6 +712,90 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
+    // ── Show product images ─────────────────────────────────────
+    if (response.action?.type === 'show_product_images') {
+      try {
+        const productName = (response.action.productName ?? '').trim()
+        if (!productName) {
+          const errMsg = '¿De qué producto querés ver las fotos? Decime el nombre.'
+          historyMsgs.push({ role: 'assistant', content: errMsg })
+          await saveMessage(conversationId, 'outbound', errMsg)
+          await evoSend(phone, errMsg)
+          await updateContext(conversationId, ctx)
+          return NextResponse.json({ ok: true })
+        }
+
+        // Pass user text to help match specific variant (color, talle, etc.)
+        const preferredAttr1 = text
+
+        const result = await getProductImages(productName, orgId, preferredAttr1)
+        console.log('[PRODUCT_IMAGES] search result:', { productName, productNameResult: result.productName, imagesCount: result.images.length, ambiguous: result.ambiguousMatches.length })
+
+        // No products found
+        if (!result.productName && result.ambiguousMatches.length === 0) {
+          const errMsg = `No tengo fotos de "${productName}" todavía 😕 ¿Querés que te describa cómo es o te paso el precio?`
+          historyMsgs.push({ role: 'assistant', content: errMsg })
+          await saveMessage(conversationId, 'outbound', errMsg)
+          await evoSend(phone, errMsg)
+          await updateContext(conversationId, ctx)
+          return NextResponse.json({ ok: true })
+        }
+
+        // Multiple products found — disambiguation
+        if (result.ambiguousMatches.length > 0) {
+          const list = result.ambiguousMatches.join(', ')
+          const errMsg = `Encontré varios: ${list}. ¿De cuál querés ver las fotos?`
+          historyMsgs.push({ role: 'assistant', content: errMsg })
+          await saveMessage(conversationId, 'outbound', errMsg)
+          await evoSend(phone, errMsg)
+          await updateContext(conversationId, ctx)
+          return NextResponse.json({ ok: true })
+        }
+
+        // Product found but no images
+        if (result.images.length === 0) {
+          const errMsg = `No tengo fotos cargadas de ${result.productName ?? 'este producto'} todavía 😕 ¿Querés que te describa cómo es o te paso el precio?`
+          historyMsgs.push({ role: 'assistant', content: errMsg })
+          await saveMessage(conversationId, 'outbound', errMsg)
+          await evoSend(phone, errMsg)
+          await updateContext(conversationId, ctx)
+          return NextResponse.json({ ok: true })
+        }
+
+        // Send images
+        const { sent, failed } = await sendProductImages(phone, result.images, result.productName ?? 'Producto')
+
+        if (sent === 0) {
+          const errMsg = `Hubo un problema al enviar las fotos de ${result.productName ?? 'Producto'} 😕 ¿Querés que te describa cómo es o te paso el precio?`
+          historyMsgs.push({ role: 'assistant', content: errMsg })
+          await saveMessage(conversationId, 'outbound', errMsg)
+          await evoSend(phone, errMsg)
+          await updateContext(conversationId, ctx)
+          return NextResponse.json({ ok: true })
+        }
+
+        // Log partial failures but don't bother the customer
+        if (failed > 0) {
+          console.log(`[PRODUCT_IMAGES] sent ${sent}/${sent + failed} images for ${result.productName ?? 'Producto'}`)
+        }
+
+        const confirmMsg = response.message?.trim() ?? `Te mandé las fotos de ${result.productName ?? 'Producto'} 📸 ¿Te interesa alguno?`
+        historyMsgs.push({ role: 'assistant', content: confirmMsg })
+        await saveMessage(conversationId, 'outbound', confirmMsg)
+        await evoSend(phone, confirmMsg)
+        await updateContext(conversationId, ctx)
+        return NextResponse.json({ ok: true })
+      } catch (err) {
+        console.error('[WEBHOOK] show_product_images error:', err)
+        const errMsg = 'Hubo un problema al buscar las fotos. ¿Querés que te describa el producto?'
+        historyMsgs.push({ role: 'assistant', content: errMsg })
+        await saveMessage(conversationId, 'outbound', errMsg)
+        await evoSend(phone, errMsg)
+        await updateContext(conversationId, ctx)
+        return NextResponse.json({ ok: true })
+      }
+    }
+
     // ── Fallback: detect add-to-order intent from AI message ─────
     // If the AI said it added items but didn't generate the action,
     // try to extract from conversation history.
@@ -737,14 +822,29 @@ export async function POST(req: NextRequest) {
 
         if (guessedName) {
           console.log('[WEBHOOK] add_to_order fallback: found product', guessedName)
-          // Try to match color/size from conversation history
+          // Try to match variant attribute_values from conversation history
           const histText = ((ctx.history ?? []).map( function(h: any) { return h.content; } ).join(' ') + ' ' + text).toLowerCase()
-          const colorMatch = histText.match(/\b(blanco|negro|gris|azul|rojo|verde|amarillo|rosa|celeste|marron|beige|violeta|naranja)\b/i)
-          const sizeMatch = histText.match(/\b([sml]|xl|xxl|xxxl|unico)\b/i)
-
+          const guessedProduct = products.find((p: any) => p.name?.toLowerCase() === guessedName.toLowerCase())
           const fallbackItem: any = { productName: guessedName }
-          if (colorMatch) fallbackItem.color = normalizeColor(colorMatch[1])
-          if (sizeMatch) fallbackItem.size = sizeMatch[1].toLowerCase()
+          if (guessedProduct?.variants?.length) {
+            const firstVariant = guessedProduct.variants.find((v: any) => v.is_active)
+            if (firstVariant) {
+              // Find matching attribute values from conversation text
+              const matchedAttrs: Record<string, string> = {}
+              for (const v of guessedProduct.variants) {
+                if (v.attribute_values) {
+                  for (const [key, val] of Object.entries(v.attribute_values)) {
+                    if (val && histText.includes(val.toString().toLowerCase())) {
+                      matchedAttrs[key] = val as string
+                    }
+                  }
+                }
+              }
+              if (Object.keys(matchedAttrs).length > 0) {
+                fallbackItem.attribute_values = matchedAttrs
+              }
+            }
+          }
 
           const resolved = resolveProductVariant(products, fallbackItem)
           let matchedProduct: any = null
@@ -756,7 +856,7 @@ export async function POST(req: NextRequest) {
               order_id: ctx.activeOrderId,
               variant_id: variant.id,
               product_name: matchedProduct.name,
-              variant_label: [variant.color, variant.size].filter(Boolean).join(' / '),
+              variant_label: Object.values(variant.attribute_values ?? {}).filter(Boolean).join(' / '),
               quantity: 1,
               unit_price: unitPrice,
               total: unitPrice,
@@ -791,7 +891,7 @@ export async function POST(req: NextRequest) {
               return NextResponse.json({ ok: true })
             }
           } else {
-            console.log('[WEBHOOK] add_to_order fallback: no active variant with stock for', matchedProduct.name, 'variants:', matchedProduct.variants?.map((v: any) => `${v.color}/${v.size} stock:${v.stock} active:${v.is_active}`).join(', '))
+            console.log('[WEBHOOK] add_to_order fallback: no active variant with stock for', matchedProduct.name, 'variants:', matchedProduct.variants?.map((v: any) => `${Object.values(v.attribute_values ?? {}).filter(Boolean).join('/')} stock:${v.stock} active:${v.is_active}`).join(', '))
           }
         } else {
           console.log('[WEBHOOK] add_to_order fallback: no product match in history', 'search:', searchText.slice(0, 100), 'products:', products.map((p: any) => p.name).join(', '))

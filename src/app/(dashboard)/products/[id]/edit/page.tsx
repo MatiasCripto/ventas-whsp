@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Upload, X } from 'lucide-react'
 import VariantsEditor from '@/components/products/variants-editor'
 import type { Category } from '@/lib/types'
-import type { Variant } from '@/components/products/variants-editor'
+import type { Variant, ProductAttributeDef } from '@/components/products/variants-editor'
 
 export default function EditProductPage() {
   const { authUser, currentStore } = useAuthContext()
@@ -17,10 +17,13 @@ export default function EditProductPage() {
   const [saving, setSaving] = useState(false)
   const [categories, setCategories] = useState<Category[]>([])
   const [uploading, setUploading] = useState(false)
+  const [attributes, setAttributes] = useState<ProductAttributeDef[]>([])
   const [variants, setVariants] = useState<Variant[]>([])
+  const [trackStock, setTrackStock] = useState(false)
+  const [stockAlertThreshold, setStockAlertThreshold] = useState(5)
   const [form, setForm] = useState({
     name: '', description: '', price: '', compare_price: '', category_id: '', tags: '',
-    images: [] as string[], is_active: true, featured: false, low_stock_threshold: 5,
+    images: [] as string[], is_active: true, featured: false,
   })
 
   useEffect(() => {
@@ -29,10 +32,11 @@ export default function EditProductPage() {
     async function load() {
       try {
         const sb = createClient()
-        const [productRes, catRes, variantsRes] = await Promise.all([
+        const [productRes, catRes, attrsRes, variantsRes] = await Promise.all([
           sb.from('products').select('*').eq('id', params.id as string).eq('organization_id', orgId).single(),
           sb.from('categories').select('id, name').eq('organization_id', orgId),
-          sb.from('product_variants').select('*').eq('product_id', params.id as string).order('color', { ascending: true }),
+          sb.from('product_attributes').select('*, values:product_attribute_values(*)').eq('product_id', params.id as string).order('sort_order', { ascending: true }),
+          sb.from('product_variants').select('*').eq('product_id', params.id as string).order('created_at', { ascending: true }),
         ])
         const p = productRes.data as Record<string, any> | null
         if (p) {
@@ -46,11 +50,37 @@ export default function EditProductPage() {
             images: p.images ?? [],
             is_active: p.is_active ?? true,
             featured: p.featured ?? false,
-            low_stock_threshold: p.low_stock_threshold ?? 5,
           })
+          const threshold = p.low_stock_threshold ?? 5
+          setStockAlertThreshold(threshold)
         }
+
         setCategories((catRes.data ?? []) as Category[])
-        setVariants((variantsRes.data ?? []) as Variant[])
+
+        // Load attribute definitions
+        const attrsData = (attrsRes.data ?? []) as any[]
+        const loadedAttrs: ProductAttributeDef[] = attrsData.map((a: any) => ({
+          name: a.name,
+          values: (a.values ?? []).map((v: any) => v.value).filter(Boolean),
+        }))
+        setAttributes(loadedAttrs)
+
+        // Load variants
+        const variantsData = (variantsRes.data ?? []) as any[]
+        const loadedVariants: Variant[] = variantsData.map((v: any) => ({
+          id: v.id,
+          attribute_values: v.attribute_values ?? {},
+          price_override: v.price_override ?? null,
+          stock: v.stock ?? null,
+          is_active: v.is_active ?? true,
+        }))
+        setVariants(loadedVariants)
+
+        // Determine if stock tracking is enabled
+        const hasStockTracking = loadedVariants.length === 0
+          ? false
+          : loadedVariants.some(v => v.stock !== null)
+        setTrackStock(hasStockTracking)
       } catch {
         // dev mode
       }
@@ -103,10 +133,64 @@ export default function EditProductPage() {
         images: form.images,
         is_active: form.is_active,
         featured: form.featured,
-        low_stock_threshold: form.low_stock_threshold,
+        low_stock_threshold: trackStock ? stockAlertThreshold : null,
       }).eq('id', params.id as string)
+
+      if (error) { setSaving(false); return alert('Error al guardar: ' + error.message) }
+
+      const productId = params.id as string
+
+      // Sync attribute definitions: delete and recreate
+      // (simple approach since we're in test mode)
+      const { data: existingAttrs } = await sb.from('product_attributes')
+        .select('id').eq('product_id', productId)
+      if (existingAttrs && existingAttrs.length > 0) {
+        await sb.from('product_attributes').delete().eq('product_id', productId)
+      }
+
+      for (let ai = 0; ai < attributes.length; ai++) {
+        const attr = attributes[ai]
+        const { data: attrData, error: attrErr } = await sb.from('product_attributes').insert({
+          product_id: productId,
+          name: attr.name,
+          sort_order: ai,
+        }).select('id').single()
+        if (attrErr) continue
+
+        const valueRows = attr.values.map((val, vi) => ({
+          attribute_id: attrData.id,
+          value: val,
+          sort_order: vi,
+        }))
+        if (valueRows.length > 0) {
+          await sb.from('product_attribute_values').insert(valueRows)
+        }
+      }
+
+      // Sync variants: delete and recreate
+      const { data: existingVariants } = await sb.from('product_variants')
+        .select('id').eq('product_id', productId)
+      if (existingVariants && existingVariants.length > 0) {
+        await sb.from('product_variants').delete().eq('product_id', productId)
+      }
+
+      if (variants.length > 0) {
+        const variantRows = variants.map(v => ({
+          product_id: productId,
+          attribute_values: v.attribute_values,
+          price_override: v.price_override,
+          stock: trackStock ? (v.stock ?? 0) : null,
+          stock_alert_threshold: trackStock ? stockAlertThreshold : null,
+          is_active: v.is_active,
+        }))
+        const { error: varError } = await sb.from('product_variants').insert(variantRows)
+        if (varError) {
+          setSaving(false)
+          return alert('Error al guardar variantes: ' + varError.message)
+        }
+      }
+
       setSaving(false)
-      if (error) return alert('Error al guardar: ' + error.message)
       router.push(`/products/${params.id}`)
     } catch {
       setSaving(false)
@@ -188,19 +272,25 @@ export default function EditProductPage() {
           </div>
         </div>
 
-        {/* Low stock threshold */}
-        <div>
-          <label className="text-xs font-medium" style={{ color: 'var(--muted)' }}>
-            Alerta de stock bajo (umbral)
+        {/* Stock tracking */}
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked={trackStock}
+              onChange={e => setTrackStock(e.target.checked)} />
+            Controlar stock
           </label>
-          <input type="number" min={0} value={form.low_stock_threshold}
-            onChange={e => setForm(f => ({ ...f, low_stock_threshold: Number(e.target.value) }))}
-            className="w-full mt-1 px-3 py-2 rounded-[var(--radius-md)] border text-sm bg-transparent outline-none max-w-[120px]"
-            style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
-          />
-          <p className="text-xs mt-1" style={{ color: 'var(--subtle)' }}>
-            Si el stock de una variante es menor o igual a este número, se mostrará una alerta.
-          </p>
+          {trackStock && (
+            <div>
+              <label className="text-xs font-medium" style={{ color: 'var(--muted)' }}>
+                Alertar cuando stock sea menor a:
+              </label>
+              <input type="number" min={0} value={stockAlertThreshold}
+                onChange={e => setStockAlertThreshold(Number(e.target.value))}
+                className="w-full mt-1 px-3 py-2 rounded-[var(--radius-md)] border text-sm bg-transparent outline-none max-w-[120px]"
+                style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+              />
+            </div>
+          )}
         </div>
 
         {/* Image upload */}
@@ -263,10 +353,11 @@ export default function EditProductPage() {
       </form>
 
       <VariantsEditor
-        productId={params.id as string}
+        attributes={attributes}
         variants={variants}
-        onChange={setVariants}
-        lowStockThreshold={form.low_stock_threshold}
+        trackStock={trackStock}
+        stockAlertThreshold={stockAlertThreshold}
+        onChange={(attrs, v) => { setAttributes(attrs); setVariants(v) }}
       />
     </div>
   )

@@ -5,13 +5,18 @@
 
 export type UserRole = 'owner' | 'admin' | 'agent' | 'viewer'
 
+export interface OrgSettings {
+  businessType?: string
+  salesPromptExtra?: string
+}
+
 export interface Organization {
   id: string
   name: string
   slug: string
   logo_url: string | null
   plan: string
-  settings: Record<string, unknown>
+  settings: OrgSettings | Record<string, unknown>
   trial_ends_at: string | null
   trial_used: boolean
   active?: boolean
@@ -75,10 +80,10 @@ export interface ProductVariant {
   id: string
   product_id: string
   sku: string | null
-  color: string | null
-  size: string | null
-  stock: number
+  attribute_values: Record<string, string>
   price_override: number | null
+  stock: number | null
+  stock_alert_threshold: number | null
   images: string[]
   is_active: boolean
   created_at: string
@@ -149,6 +154,7 @@ export interface OrderItem {
   quantity: number
   unit_price: number
   total: number
+  variant_snapshot?: Record<string, unknown>
 }
 
 export interface StorePaymentSettings {

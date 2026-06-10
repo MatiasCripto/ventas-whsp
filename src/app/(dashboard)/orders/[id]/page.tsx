@@ -190,7 +190,7 @@ export default function OrderDetailPage() {
         order_id: order.id,
         variant_id: selectedVariantId,
         product_name: product.name,
-        variant_label: [variant.color, variant.size].filter(Boolean).join(' / '),
+        variant_label: Object.values(variant.attribute_values ?? {}).filter(Boolean).join(' / '),
         quantity: addQuantity,
         unit_price: unitPrice,
         total,
@@ -578,7 +578,7 @@ export default function OrderDetailPage() {
                   <option value="">Seleccionar...</option>
                   {selectedProduct.variants?.filter(v => v.is_active).map(v => (
                     <option key={v.id} value={v.id}>
-                      {[v.color, v.size].filter(Boolean).join(' / ') || 'Sin variante'} — Stock: {v.stock}
+                      {Object.values(v.attribute_values ?? {}).filter(Boolean).join(' / ') || 'Sin variante'} — Stock: {v.stock}
                     </option>
                   ))}
                 </select>

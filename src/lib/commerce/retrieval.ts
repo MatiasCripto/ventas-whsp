@@ -82,7 +82,7 @@ export async function retrieveProducts(
     final = final.filter(p => p.price <= options.maxPrice!)
   }
   if (options.inStock) {
-    final = final.filter((p: any) => p.stock > 0)
+    final = final.filter((p: any) => p.stock === null || p.stock > 0)
   }
 
   return final.slice(0, limit)
@@ -99,7 +99,7 @@ export async function getProductDetail(
       id, name, slug, price, compare_price, images, description,
       tags, brand, is_active,
       category:categories(name),
-      variants:product_variants(id, color, size, stock, price_override, is_active)
+      variants:product_variants(id, attribute_values, stock, price_override, is_active)
     `)
     .eq('id', productId)
     .eq('organization_id', organizationId)
@@ -111,9 +111,6 @@ export async function getProductDetail(
   const variants = (p.variants as Array<Record<string, unknown>> ?? [])
     .filter(v => v.is_active !== false)
 
-  const colors = [...new Set(variants.map(v => v.color).filter(Boolean))] as string[]
-  const sizes = [...new Set(variants.map(v => v.size).filter(Boolean))] as string[]
-  const totalStock = variants.reduce((sum: number, v) => sum + (v.stock as number || 0), 0)
   const category = (p.category as Record<string, string> | null)?.name ?? ''
 
   return {
@@ -214,7 +211,7 @@ async function searchByExactCategory(
   const { data: products } = await sb
     .from('products')
     .select(`
-      id, name, slug, price, compare_price, images,
+      id, name, slug, description, price, compare_price, images,
       category:categories!inner(name)
     `)
     .eq('organization_id', orgId)
@@ -228,18 +225,17 @@ async function searchByExactCategory(
   for (const p of products) {
     const prod = p as Record<string, unknown>
     const variants = await getVariantsForProduct(sb, prod.id as string)
-    const colors = [...new Set(variants.map(v => v.color).filter(Boolean))] as string[]
-    const sizes = [...new Set(variants.map(v => v.size).filter(Boolean))] as string[]
-    const totalStock = variants.reduce((sum, v) => sum + (v.stock || 0), 0)
 
     results.push({
       id: prod.id as string,
       name: prod.name as string,
       slug: prod.slug as string,
+      description: prod.description as string | null ?? undefined,
       price: prod.price as number,
       compare_price: prod.compare_price as number | null ?? undefined,
       images: prod.images as string[] ?? [],
       category_name: (prod.category as Record<string, string> | null)?.name ?? '',
+      variants,
     })
   }
 
@@ -255,6 +251,7 @@ function mapToProductResults(data: unknown[]): ProductResult[] {
       id: (r.product_id as string) || (r.id as string),
       name: r.name as string,
       slug: r.slug as string,
+      description: r.description as string | null ?? (r.product_description as string | null) ?? undefined,
       price: Number(r.price) || 0,
       compare_price: r.compare_price ? Number(r.compare_price) : null,
       images: (r.images as string[]) ?? [],
@@ -269,12 +266,12 @@ function mapToProductResults(data: unknown[]): ProductResult[] {
 async function getVariantsForProduct(
   sb: ReturnType<typeof createServiceClient>,
   productId: string
-): Promise<Array<{ color: string | null; size: string | null; stock: number }>> {
+): Promise<ProductResult['variants']> {
   const { data } = await sb
     .from('product_variants')
-    .select('color, size, stock')
+    .select('id, attribute_values, stock, price_override, is_active')
     .eq('product_id', productId)
     .eq('is_active', true)
 
-  return (data ?? []) as Array<{ color: string | null; size: string | null; stock: number }>
+  return (data ?? []) as ProductResult['variants']
 }

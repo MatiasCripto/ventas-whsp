@@ -71,15 +71,20 @@ export async function sendImage(
   caption?: string,
   delay = 1200,
   instanceName?: string,
+  mimetype?: string,
 ) {
   const instance = resolveInstance(instanceName)
-  return evolutionFetch(`/message/sendMedia/${instance}`, {
+  const body: Record<string, unknown> = {
     number: phone,
     mediatype: 'image',
     media: imageUrl,
     caption: caption ?? '',
     delay,
-  })
+  }
+  if (mimetype) {
+    body.mimetype = mimetype
+  }
+  return evolutionFetch(`/message/sendMedia/${instance}`, body)
 }
 
 /**

@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
       id, name, slug, description, price, compare_price, images, tags, brand,
       is_active, featured, created_at,
       category:categories(name),
-      variants:product_variants(id, color, size, stock, price_override, is_active)
+      variants:product_variants(id, attribute_values, stock, price_override, is_active)
     `)
     .eq('organization_id', orgId)
     .order('created_at', { ascending: false })

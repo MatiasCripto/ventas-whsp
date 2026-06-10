@@ -24,8 +24,6 @@ export interface CommerceContext {
   customer?: {
     name: string
     totalOrders: number
-    preferredSizes?: string[]
-    preferredColors?: string[]
     lastPurchase?: string
   } | null
   // Retrieved products
@@ -60,8 +58,7 @@ export interface CommerceProduct {
   price: number
   comparePrice: number | null
   description: string | null
-  colors: string[]
-  sizes: string[]
+  attributes?: Array<{ name: string; values: string[] }>
   stock: number
   images: string[]
   category: string | null

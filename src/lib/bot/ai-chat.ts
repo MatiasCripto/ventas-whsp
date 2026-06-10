@@ -22,9 +22,10 @@ export interface AgentResponse {
 }
 
 export interface AgentAction {
-  type: 'start_checkout' | 'add_to_order' | 'remove_from_order' | 'human_handoff' | 'request_payment_info' | 'add_to_cart' | 'remove_from_cart' | 'checkout' | 'cancel_order' | 'apply_coupon'
+  type: 'start_checkout' | 'add_to_order' | 'remove_from_order' | 'human_handoff' | 'request_payment_info' | 'show_product_images' | 'add_to_cart' | 'remove_from_cart' | 'checkout' | 'cancel_order' | 'apply_coupon'
   reason?: string
-  items?: Array<{ productName: string; quantity: number; size?: string; color?: string; productId?: string; variantId?: string }>
+  productName?: string
+  items?: Array<{ productName: string; quantity: number; attribute_values?: Record<string, string>; productId?: string; variantId?: string }>
   payload?: Record<string, unknown>
 }
 
@@ -198,7 +199,8 @@ export function buildAiPrompt(userMessage: string, ctx: Record<string, any>): st
   if (ctx.customerHistory?.length) {
     parts.push(`Compras anteriores del cliente:`)
     for (const h of ctx.customerHistory) {
-      parts.push(`  - ${h.productName} (${h.size ?? 'sin talle'}, ${h.color ?? 'sin color'}) — ${h.date}`)
+      const attrStr = h.attribute_values ? Object.values(h.attribute_values).filter(Boolean).join(' / ') : 'sin variante'
+      parts.push(`  - ${h.productName} (${attrStr}) — ${h.date}`)
     }
   }
 
@@ -210,17 +212,18 @@ export function buildAiPrompt(userMessage: string, ctx: Record<string, any>): st
         : `$${p.price}`
       const tags = p.tags?.length ? ` | Tags: ${p.tags.join(', ')}` : ''
       const brand = p.brand ? ` | Marca: ${p.brand}` : ''
-      parts.push(`  ${getProductEmoji(p.name)} ${p.name}${brand} — ${precio}${tags}`)
+      const desc = p.description ? ` | ${p.description.replace(/\n/g, ' ').slice(0, 150)}` : ''
+      parts.push(`  ${getProductEmoji(p.name)} ${p.name}${brand} — ${precio}${tags}${desc}`)
 
       if (p.variants?.length) {
-        const disponibles = p.variants.filter((v: any) => v.is_active && v.stock > 0)
+        const disponibles = p.variants.filter((v: any) => v.is_active && (v.stock === null || v.stock > 0))
         if (disponibles.length) {
           for (const v of disponibles) {
             const precioVar = v.price_override ? ` ($${v.price_override})` : ''
-            const color = v.color ? `Color: ${v.color}` : ''
-            const size = v.size ? `Talle: ${v.size}` : ''
-            const stock = v.stock <= 3 ? ` ⚠ Quedan pocos` : ` ✔ Disponible`
-            parts.push(`     → ${[color, size].filter(Boolean).join(' | ')}${precioVar}${stock}`)
+            const attrStr = v.attribute_values ? Object.entries(v.attribute_values).map(([k, val]) => `${k}: ${val}`).join(' | ') : ''
+            const stock = v.stock !== null && v.stock <= 3 ? ` ⚠ Quedan pocos` : v.stock === null ? ` ✔ Disponible` : ` ✔ Disponible`
+            const info = [attrStr, precioVar, stock].filter(Boolean).join(' — ')
+            parts.push(`     → ${info}`)
           }
         } else {
           parts.push(`     → Sin stock disponible`)
@@ -235,7 +238,8 @@ export function buildAiPrompt(userMessage: string, ctx: Record<string, any>): st
       parts.push(`  - Pedido #${o.id?.slice(0,8)} | $${o.total} | Estado: ${o.status} | ${o.created_at?.slice(0,10)}`)
       if (o.items?.length) {
         for (const i of o.items) {
-          parts.push(`     → ${i.product_name} x${i.quantity} (${i.variant?.size ?? ''} ${i.variant?.color ?? ''})`.trim())
+          const varStr = i.variant?.attribute_values ? Object.values(i.variant.attribute_values).filter(Boolean).join(' / ') : ''
+          parts.push(`     → ${i.product_name} x${i.quantity} (${varStr})`.trim())
         }
       }
     }
@@ -244,7 +248,8 @@ export function buildAiPrompt(userMessage: string, ctx: Record<string, any>): st
   if (ctx.cart?.items?.length) {
     parts.push(`Carrito actual:`)
     for (const i of ctx.cart.items) {
-      parts.push(`  - ${i.productName} x${i.quantity} (${i.size ?? ''} ${i.color ?? ''}) — $${i.price}`.trim())
+      const cartAttr = i.attribute_values ? Object.values(i.attribute_values).filter(Boolean).join(' / ') : ''
+      parts.push(`  - ${i.productName} x${i.quantity} (${cartAttr}) — $${i.price}`.trim())
     }
     parts.push(`  Total carrito: $${ctx.cart.total}`)
   }

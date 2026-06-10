@@ -129,6 +129,11 @@ export default function SettingsPage() {
           style={{ background: 'var(--surface-2)', color: 'var(--muted)' }}>
           Pagos
         </a>
+        <a href="/settings/agent"
+          className="text-xs px-3 py-1.5 rounded-[var(--radius-full)] font-medium transition-colors"
+          style={{ background: 'var(--surface-2)', color: 'var(--muted)' }}>
+          Agente
+        </a>
       </div>
       <h1 className="text-xl font-semibold">Configuración</h1>
 

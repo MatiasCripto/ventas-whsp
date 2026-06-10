@@ -5,15 +5,15 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Pencil, Trash2 } from 'lucide-react'
-import { formatCurrency, formatDate, getInitials } from '@/lib/utils/formatters'
-import type { Product, ProductVariant } from '@/lib/types'
+import { formatCurrency, formatDate } from '@/lib/utils/formatters'
+import { Product } from '@/lib/types'
 
 export default function ProductDetailPage() {
   const { authUser } = useAuthContext()
   const params = useParams()
   const router = useRouter()
   const [product, setProduct] = useState<Product | null>(null)
-  const [variants, setVariants] = useState<ProductVariant[]>([])
+  const [variants, setVariants] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
 
@@ -29,8 +29,8 @@ export default function ProductDetailPage() {
         if (p) {
           setProduct(p as unknown as Product)
           const { data: v } = await sb.from('product_variants')
-            .select('*').eq('product_id', p.id).order('color', { ascending: true })
-          setVariants((v ?? []) as ProductVariant[])
+            .select('*').eq('product_id', p.id).order('created_at', { ascending: true })
+          setVariants(v ?? [])
         }
       } catch {
         // dev mode — Supabase not available
@@ -63,9 +63,14 @@ export default function ProductDetailPage() {
   if (loading) return <div className="text-sm" style={{ color: 'var(--muted)' }}>Cargando...</div>
   if (!product) return <div className="text-sm" style={{ color: 'var(--muted)' }}>Producto no encontrado</div>
 
-  const totalStock = variants.reduce((s, v) => s + (v.is_active ? v.stock : 0), 0)
+  const hasStockTracking = variants.some((v: any) => v.stock != null)
+  const totalStock = hasStockTracking
+    ? variants.reduce((s: number, v: any) => s + (v.is_active && v.stock != null ? v.stock : 0), 0)
+    : 0
   const threshold = (product as any).low_stock_threshold ?? 5
-  const lowStockVariants = variants.filter(v => v.is_active && v.stock <= threshold)
+  const lowStockVariants = hasStockTracking
+    ? variants.filter((v: any) => v.is_active && v.stock != null && v.stock <= threshold)
+    : []
   const bestImage = product.images?.[0]
 
   return (
@@ -110,7 +115,7 @@ export default function ProductDetailPage() {
             {bestImage ? (
               <img src={bestImage} alt={product.name} className="w-full h-full object-cover" />
             ) : (
-              <span className="text-4xl" style={{ color: 'var(--subtle)' }}>👕</span>
+              <span className="text-4xl" style={{ color: 'var(--subtle)' }}>📦</span>
             )}
           </div>
         </div>
@@ -138,7 +143,9 @@ export default function ProductDetailPage() {
               </div>
               <div>
                 <span style={{ color: 'var(--subtle)' }}>Stock total</span>
-                <p className="font-medium">{totalStock} unidades</p>
+                <p className="font-medium">
+                  {hasStockTracking ? `${totalStock} unidades` : 'Sin control'}
+                </p>
               </div>
               <div>
                 <span style={{ color: 'var(--subtle)' }}>Categoría</span>
@@ -179,32 +186,36 @@ export default function ProductDetailPage() {
         </div>
         {variants.length === 0 ? (
           <div className="p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>
-            Sin variantes. Usá el seed data para crearlas.
+            Sin variantes.
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: 'var(--surface-2)' }}>
-                <th className="text-left px-4 py-2 font-medium">Color</th>
-                <th className="text-left px-4 py-2 font-medium">Talle</th>
-                <th className="text-right px-4 py-2 font-medium">Stock</th>
+                <th className="text-left px-4 py-2 font-medium">Combinación</th>
+                {hasStockTracking && <th className="text-right px-4 py-2 font-medium">Stock</th>}
                 <th className="text-right px-4 py-2 font-medium">Precio</th>
                 <th className="text-center px-4 py-2 font-medium">Activo</th>
               </tr>
             </thead>
             <tbody>
-              {variants.map(v => {
-                const isLowStock = v.is_active && v.stock <= threshold
+              {variants.map((v: any) => {
+                const attrs = v.attribute_values ?? {}
+                const comboLabel = Object.keys(attrs).length > 0
+                  ? Object.values(attrs).join(' / ')
+                  : '—'
+                const isLowStock = hasStockTracking && v.is_active && v.stock != null && v.stock <= threshold
                 return (
                   <tr key={v.id} className={`border-t ${isLowStock ? 'bg-red-50' : ''}`} style={{ borderColor: 'var(--border)' }}>
-                    <td className="px-4 py-2">{v.color ?? '—'}</td>
-                    <td className="px-4 py-2">{v.size ?? '—'}</td>
-                    <td className="px-4 py-2 text-right">
-                      <span className={isLowStock ? 'text-red-600 font-medium' : ''}>
-                        {v.stock}
-                        {isLowStock && <span className="ml-1">⚠</span>}
-                      </span>
-                    </td>
+                    <td className="px-4 py-2 font-medium text-xs">{comboLabel}</td>
+                    {hasStockTracking && (
+                      <td className="px-4 py-2 text-right">
+                        <span className={isLowStock ? 'text-red-600 font-medium' : ''}>
+                          {v.stock ?? '—'}
+                          {isLowStock && <span className="ml-1">⚠</span>}
+                        </span>
+                      </td>
+                    )}
                     <td className="px-4 py-2 text-right">{v.price_override ? formatCurrency(v.price_override) : '—'}</td>
                     <td className="px-4 py-2 text-center">
                       <span className={`inline-block w-2 h-2 rounded-full ${v.is_active ? 'status-confirmed' : 'status-cancelled'}`} />

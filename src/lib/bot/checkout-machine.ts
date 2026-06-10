@@ -9,8 +9,7 @@ export type CheckoutState = 'idle' | 'name' | 'dni' | 'shipping' | 'address' | '
 export interface CheckoutItem {
   productName: string
   quantity: number
-  size?: string
-  color?: string
+  attribute_values?: Record<string, string>
   productId?: string
   variantId?: string
 }
@@ -26,6 +25,7 @@ export interface CheckoutSession {
   references?: string
   pickup: boolean
   paymentMethod?: 'transfer' | 'cash_on_delivery' | 'pickup_payment'
+  storeName?: string
 }
 
 export interface CheckoutResult {
@@ -227,7 +227,8 @@ function handleDniState(text: string, session: CheckoutSession): CheckoutResult 
     }
     return {
       session: nextSession,
-      response: 'Gracias. ¿Cómo preferís recibirlo? ¿Envío a domicilio o retiro por el local?',
+      response: 'Gracias. ¿Cómo preferís recibirlo? ¿Envío a domicilio'
+        + (session.storeName ? ` o retiro en ${session.storeName}?` : ' o retiro por el local?'),
     }
   }
 
@@ -270,7 +271,8 @@ function handleShippingState(text: string, session: CheckoutSession): CheckoutRe
     }
     return {
       session: nextSession,
-      response: '¿Cómo preferís pagar? ¿Transferencia bancaria o pago al retirar por el local?',
+      response: '¿Cómo preferís pagar? ¿Transferencia bancaria o pago al retirar'
+        + (session.storeName ? ` por ${session.storeName}?` : ' por el local?'),
     }
   }
 
@@ -442,11 +444,11 @@ function handleConfirmState(text: string, session: CheckoutSession): CheckoutRes
 
 function buildSummary(session: CheckoutSession): string {
   const items = session.items
-    .map(i => buildProductPresentation(i.productName, i.color, i.quantity, i.size))
+    .map(i => buildProductPresentation(i.productName, i.quantity, i.attribute_values))
     .join('\n')
 
   const method = session.pickup
-    ? 'Retiro por el local'
+    ? session.storeName ? `Retiro en ${session.storeName}` : 'Retiro por el local'
     : `Envío a ${session.address}${session.locality ? `, ${session.locality}` : ''}`
 
   const payment = session.paymentMethod === 'transfer'
@@ -467,7 +469,9 @@ export function buildCheckoutContext(session: CheckoutSession): string {
   if (session.customerName) parts.push(`Nombre: ${session.customerName}`)
   if (session.dni) parts.push(`DNI: ${session.dni}`)
   if (session.shippingMethod) {
-    parts.push(`Método: ${session.shippingMethod === 'pickup' ? 'Retiro en local' : 'Envío a domicilio'}`)
+    parts.push(`Método: ${session.shippingMethod === 'pickup'
+      ? session.storeName ? `Retiro en ${session.storeName}` : 'Retiro por el local'
+      : 'Envío a domicilio'}`)
   }
   if (session.address) parts.push(`Dirección: ${session.address}`)
   if (session.locality) parts.push(`Localidad: ${session.locality}`)

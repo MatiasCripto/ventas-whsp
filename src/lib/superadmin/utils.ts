@@ -16,10 +16,14 @@ export function generateTempPassword(): string {
   return password
 }
 
-export function getVariantAttrs(rubro: string): {
+export function getVariantAttrs(_rubro: string): {
   attr1: string
   attr2: string
 } {
+  // Legacy: previously mapped rubro → attr1/attr2 labels.
+  // In the new dynamic system, variant attributes are stored in
+  // product_variants.attribute_values JSONB.
+  // Keeping function signature for backward compat, but returning generic labels.
   const map: Record<string, { attr1: string; attr2: string }> = {
     ropa:        { attr1: 'Talle',     attr2: 'Color' },
     calzado:     { attr1: 'Número',    attr2: 'Color' },
@@ -29,5 +33,5 @@ export function getVariantAttrs(rubro: string): {
     ferreteria:  { attr1: 'Medida',    attr2: 'Material' },
     otro:        { attr1: 'Variante 1',attr2: 'Variante 2' },
   }
-  return map[rubro] ?? map['otro']
+  return map[_rubro] ?? map['otro']
 }

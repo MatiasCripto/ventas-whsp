@@ -32,10 +32,12 @@ export function buildCommerceContext(
     parts.push(`--- PRODUCTOS DISPONIBLES (${data.products.length}) ---`)
     for (const p of data.products) {
       const comparePrice = p.comparePrice ? ` (antes $${p.comparePrice})` : ''
-      const stockInfo = p.stock > 0 ? `Stock: ${p.stock}` : 'SIN STOCK'
-      const colors = p.colors.length > 0 ? ` | Colores: ${p.colors.join(', ')}` : ''
-      const sizes = p.sizes.length > 0 ? ` | Talles: ${p.sizes.join(', ')}` : ''
-      parts.push(`- ${p.name}: $${p.price}${comparePrice}${stockInfo}${colors}${sizes}`)
+      const stockInfo = p.stock === null ? 'Stock: N/A' : p.stock > 0 ? `Stock: ${p.stock}` : 'SIN STOCK'
+      const attrStr = p.attributes?.length
+        ? ` | ${p.attributes.map(a => `${a.name}s: ${a.values.join(', ')}`).join(' | ')}`
+        : ''
+      const desc = p.description ? ` | ${p.description.slice(0, 120)}` : ''
+      parts.push(`- ${p.name}: $${p.price}${comparePrice}${stockInfo}${attrStr}${desc}`)
     }
     parts.push('')
   }
@@ -55,12 +57,6 @@ export function buildCommerceContext(
     parts.push(`--- CLIENTE ---`)
     parts.push(`Nombre: ${data.customer.name}`)
     parts.push(`Compras anteriores: ${data.customer.totalOrders}`)
-    if (data.customer.preferredSizes?.length) {
-      parts.push(`Talles frecuentes: ${data.customer.preferredSizes.join(', ')}`)
-    }
-    if (data.customer.preferredColors?.length) {
-      parts.push(`Colores favoritos: ${data.customer.preferredColors.join(', ')}`)
-    }
     if (data.customer.lastPurchase) {
       parts.push(`Última compra: ${data.customer.lastPurchase}`)
     }

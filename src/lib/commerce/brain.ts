@@ -16,6 +16,7 @@ import type { ProductResult } from '@/lib/types/whatsapp.types'
 import type { BotContext } from '@/lib/types/whatsapp.types'
 
 function productResultToCommerce(p: ProductResult): CommerceProduct {
+  const attributes = extractAttributes(p.variants)
   return {
     id: p.id,
     name: p.name,
@@ -23,14 +24,32 @@ function productResultToCommerce(p: ProductResult): CommerceProduct {
     price: Number(p.price),
     comparePrice: p.compare_price ? Number(p.compare_price) : null,
     description: p.description ?? null,
-    colors: [],
-    sizes: [],
+    attributes,
     stock: 999,
     images: p.images ?? [],
     category: p.category_name ?? null,
     brand: p.brand ?? null,
     tags: p.tags ?? [],
   }
+}
+
+function extractAttributes(
+  variants: ProductResult['variants']
+): Array<{ name: string; values: string[] }> {
+  if (!variants || variants.length === 0) return []
+  const attrMap: Record<string, Set<string>> = {}
+  for (const v of variants) {
+    if (v.attribute_values) {
+      for (const [key, val] of Object.entries(v.attribute_values)) {
+        if (!attrMap[key]) attrMap[key] = new Set()
+        attrMap[key].add(val)
+      }
+    }
+  }
+  return Object.entries(attrMap).map(([name, values]) => ({
+    name,
+    values: [...values],
+  }))
 }
 
 export async function processCommerceMessage(
@@ -194,36 +213,51 @@ export async function processCommerceMessage(
         }
       }
 
-      // Determine variant (color, size) from message
-      const requestedColor = matchedProduct.colors.find((c: string) =>
-        lowerMsg.includes(c.toLowerCase())
-      ) ?? matchedProduct.colors[0] ?? null
-
-      const requestedSize = matchedProduct.sizes.find((s: string) =>
-        lowerMsg.includes(s.toLowerCase())
-      ) ?? matchedProduct.sizes[0] ?? null
-
-      // Fetch exact variant
+      // Fetch all active variants and find the best match from the message
       const sb = createServiceClient()
-      const { data: variant } = await sb
+      const { data: allVariants } = await sb
         .from('product_variants')
-        .select('id, stock')
+        .select('id, stock, attribute_values')
         .eq('product_id', matchedProduct.productId)
-        .eq('color', requestedColor)
-        .eq('size', requestedSize)
         .eq('is_active', true)
-        .maybeSingle()
 
-      if (!variant) {
+      if (!allVariants || allVariants.length === 0) {
         return {
-          response: `No encontré stock de "${matchedProduct.name}" en ${requestedColor || ''} ${requestedSize || ''}. ¿Te sirve otra combinación?`,
+          response: `No encontré variantes disponibles para "${matchedProduct.name}". ¿Te sirve otra opción?`,
           newContext: {},
         }
       }
 
+      // Collect unique attribute values to detect what the user mentioned
+      const uniqueValues = new Set<string>()
+      for (const v of allVariants) {
+        const av = v.attribute_values as Record<string, string> | null
+        if (av) Object.values(av).forEach(val => uniqueValues.add(val))
+      }
+
+      const mentionedValues = [...uniqueValues].filter(val =>
+        lowerMsg.includes(val.toLowerCase())
+      )
+
+      // Find the variant that matches all mentioned attribute values
+      let variant = mentionedValues.length > 0
+        ? allVariants.find(v => {
+            const av = v.attribute_values as Record<string, string> | null
+            return av && mentionedValues.every(mv =>
+              Object.values(av).some(v => v.toLowerCase() === mv.toLowerCase())
+            )
+          })
+        : null
+
+      if (!variant) variant = allVariants[0]
+
+      const variantLabel = variant.attribute_values
+        ? Object.values(variant.attribute_values as Record<string, string>).filter(Boolean).join(' / ')
+        : ''
+
       if ((variant as Record<string, unknown>).stock === 0) {
         return {
-          response: `Uy, "${matchedProduct.name}" se nos agotó en ese talle/color. ¿Querés ver otra opción?`,
+          response: `Uy, "${matchedProduct.name}" en ${variantLabel} se nos agotó. ¿Querés ver otra opción?`,
           newContext: {},
         }
       }
@@ -377,7 +411,10 @@ function buildPromptForAI(
     parts.push('Respondé recomendando estos productos de forma natural. Preguntá color/talle que prefieren.')
   } else if (mode === 'product_detail' && ctx.products && ctx.products.length === 1) {
     const p = ctx.products[0]
-    parts.push(`Respondé con el detalle de "${p.name}" — precio, colores disponibles (${p.colors.join(', ')}), talles (${p.sizes.join(', ')}), y stock.`)
+    const attrDesc = p.attributes?.map(a =>
+      `${a.name}s disponibles (${a.values.join(', ')})`
+    ).join(', ') ?? ''
+    parts.push(`Respondé con el detalle de "${p.name}" — precio, ${attrDesc}, y stock.`)
   } else if (mode === 'checkout' && ctx.cart) {
     parts.push(`El carrito tiene ${ctx.cart.items.length} items por un total de $${ctx.cart.total}. Preguntá dirección y método de pago para finalizar.`)
   } else if (mode === 'cart_view' && ctx.cart) {

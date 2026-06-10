@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Upload, X } from 'lucide-react'
 import VariantsEditor from '@/components/products/variants-editor'
 import type { Category } from '@/lib/types'
-import type { Variant } from '@/components/products/variants-editor'
+import type { Variant, ProductAttributeDef } from '@/components/products/variants-editor'
 
 export default function NewProductPage() {
   const { authUser } = useAuthContext()
@@ -16,7 +16,10 @@ export default function NewProductPage() {
   const [uploadingImg, setUploadingImg] = useState(false)
   const [imageUrls, setImageUrls] = useState<string[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [attributes, setAttributes] = useState<ProductAttributeDef[]>([])
   const [variants, setVariants] = useState<Variant[]>([])
+  const [trackStock, setTrackStock] = useState(false)
+  const [stockAlertThreshold, setStockAlertThreshold] = useState(5)
   const [form, setForm] = useState({
     name: '', description: '', price: '', category_id: '', tags: '',
     is_active: true, featured: false,
@@ -77,24 +80,47 @@ export default function NewProductPage() {
         images: imageUrls,
         is_active: form.is_active,
         featured: form.featured,
+        low_stock_threshold: trackStock ? stockAlertThreshold : null,
       }).select('id').single()
 
       if (error) { setSaving(false); return alert('Error al crear: ' + error.message) }
       const productId = data!.id
 
-      // Insert variants if any
+      // Save attribute definitions
+      if (attributes.length > 0) {
+        for (let ai = 0; ai < attributes.length; ai++) {
+          const attr = attributes[ai]
+          const { data: attrData, error: attrErr } = await sb.from('product_attributes').insert({
+            product_id: productId,
+            name: attr.name,
+            sort_order: ai,
+          }).select('id').single()
+          if (attrErr) continue
+
+          // Save attribute values
+          const valueRows = attr.values.map((val, vi) => ({
+            attribute_id: attrData.id,
+            value: val,
+            sort_order: vi,
+          }))
+          if (valueRows.length > 0) {
+            await sb.from('product_attribute_values').insert(valueRows)
+          }
+        }
+      }
+
+      // Insert variants
       if (variants.length > 0) {
         const variantRows = variants.map(v => ({
           product_id: productId,
-          color: v.color,
-          size: v.size,
-          stock: v.stock,
+          attribute_values: v.attribute_values,
           price_override: v.price_override,
+          stock: trackStock ? (v.stock ?? 0) : null,
+          stock_alert_threshold: trackStock ? stockAlertThreshold : null,
           is_active: v.is_active,
         }))
         const { error: varError } = await sb.from('product_variants').insert(variantRows)
         if (varError) {
-          // Rollback: delete the product if variants fail
           await sb.from('products').delete().eq('id', productId)
           setSaving(false)
           return alert('Error al crear variantes: ' + varError.message)
@@ -170,6 +196,27 @@ export default function NewProductPage() {
           />
         </div>
 
+        {/* Stock tracking */}
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked={trackStock}
+              onChange={e => setTrackStock(e.target.checked)} />
+            Controlar stock
+          </label>
+          {trackStock && (
+            <div>
+              <label className="text-xs font-medium" style={{ color: 'var(--muted)' }}>
+                Alertar cuando stock sea menor a:
+              </label>
+              <input type="number" min={0} value={stockAlertThreshold}
+                onChange={e => setStockAlertThreshold(Number(e.target.value))}
+                className="w-full mt-1 px-3 py-2 rounded-[var(--radius-md)] border text-sm bg-transparent outline-none max-w-[120px]"
+                style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+              />
+            </div>
+          )}
+        </div>
+
         <div>
           <label className="text-xs font-medium" style={{ color: 'var(--muted)' }}>Imágenes</label>
           <div className="mt-2 flex flex-wrap gap-3">
@@ -225,8 +272,11 @@ export default function NewProductPage() {
       </form>
 
       <VariantsEditor
+        attributes={attributes}
         variants={variants}
-        onChange={setVariants}
+        trackStock={trackStock}
+        stockAlertThreshold={stockAlertThreshold}
+        onChange={(attrs, v) => { setAttributes(attrs); setVariants(v) }}
       />
     </div>
   )

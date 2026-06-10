@@ -44,7 +44,7 @@ export type BotState =
   | 'human_handoff'
   | 'closed'
 
-export type CheckoutState = 'idle' | 'name' | 'dni' | 'shipping' | 'address' | 'payment_method' | 'payment_waiting_proof' | 'confirm' | 'completed'
+export type CheckoutState = 'idle' | 'name' | 'dni' | 'shipping' | 'address' | 'payment_method' | 'payment_waiting_proof' | 'proof_received' | 'confirm' | 'completed'
 
 export interface BotContext {
   phone: string
@@ -60,7 +60,7 @@ export interface BotContext {
   storeName?: string
   history?: Array<{ role: 'user' | 'assistant'; content: string }>
   // Checkout flow data (persisted in context JSONB)
-  checkoutItems?: Array<{ productName: string; quantity: number; size?: string; color?: string; productId?: string; variantId?: string }>
+  checkoutItems?: Array<{ productName: string; quantity: number; attribute_values?: Record<string, string>; productId?: string; variantId?: string }>
   checkoutName?: string
   checkoutDni?: string
   checkoutShippingMethod?: 'shipping' | 'pickup'
@@ -128,9 +128,8 @@ export interface ProductResult {
   variants?: Array<{
     id: string
     sku?: string
-    color?: string
-    size?: string
-    stock: number
+    attribute_values: Record<string, string>
+    stock: number | null
     price_override?: number | null
     images?: string[]
     is_active: boolean

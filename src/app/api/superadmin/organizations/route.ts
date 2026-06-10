@@ -123,15 +123,23 @@ export async function POST(req: NextRequest) {
       })
     if (profileError) throw new Error(`Profile error: ${profileError.message}`)
 
-    // Paso 4: Guardar configuración AI en organization.settings
+    // Paso 4: Guardar configuración AI + org settings defaults en organization.settings
     const { data: existingOrg } = await sb
       .from('organizations')
       .select('settings')
       .eq('id', orgId)
       .single()
     const settings = (existingOrg?.settings as Record<string, any>) ?? {}
+    const { attr1: attr1Label, attr2: attr2Label } = getVariantAttrs(rubro ?? 'otro')
     await sb.from('organizations').update({
-      settings: { ...settings, ai: { provider: ai_provider, apiKey: ai_api_key, model: ai_model } },
+      settings: {
+        ...settings,
+        ai: { provider: ai_provider, apiKey: ai_api_key, model: ai_model },
+        businessType: rubro ?? null,
+        attr1Label,
+        attr2Label,
+        salesPromptExtra: null,
+      },
     }).eq('id', orgId)
 
     // Paso 5: Crear instancia en Evolution API
@@ -141,15 +149,12 @@ export async function POST(req: NextRequest) {
     }
 
     // Paso 6: Crear store
-    const { attr1, attr2 } = getVariantAttrs(rubro ?? 'otro')
     const { data: store, error: storeError } = await sb
       .from('stores')
       .insert({
         organization_id: orgId,
         name: store_name,
         evolution_instance: evolutionInstance,
-        variant_attr1: attr1,
-        variant_attr2: attr2,
       })
       .select('id')
       .single()

@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Check, Copy } from 'lucide-react'
 
-type Rubro = 'ropa' | 'calzado' | 'electronica' | 'muebles' | 'alimentos' | 'ferreteria' | 'otro'
+type Rubro = string
 type AiProvider = 'openai' | 'anthropic' | 'deepseek' | 'groq'
 
 const AI_MODEL_SUGGESTIONS: Record<AiProvider, string> = {
@@ -34,6 +35,22 @@ export default function NewOrganization() {
   const [orgName, setOrgName] = useState('')
   const [storeName, setStoreName] = useState('')
   const [rubro, setRubro] = useState<Rubro>('ropa')
+  const [categoryOptions, setCategoryOptions] = useState<Array<{ id: string; name: string }>>([])
+
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const sb = createClient()
+        const { data } = await sb.from('categories').select('name').limit(100)
+        const names = [...new Set((data ?? []).map((c: any) => c.name).filter(Boolean))]
+        setCategoryOptions(names.map(n => ({ id: n.toLowerCase(), name: n })))
+        if (names.length > 0) setRubro(names[0].toLowerCase())
+      } catch {
+        setCategoryOptions([])
+      }
+    })()
+  }, [])
+
 
   // Step 2 — Owner
   const [ownerEmail, setOwnerEmail] = useState('')
@@ -211,13 +228,14 @@ export default function NewOrganization() {
                 <select value={rubro} onChange={(e) => setRubro(e.target.value as Rubro)}
                   className="w-full mt-1 px-3 py-2 rounded-[var(--radius-md)] text-sm border"
                   style={{ borderColor: 'var(--border)', background: 'var(--surface)', color: 'var(--foreground)' }}>
-                  <option value="ropa">Ropa</option>
-                  <option value="calzado">Calzado</option>
-                  <option value="electronica">Electrónica</option>
-                  <option value="muebles">Muebles</option>
-                  <option value="alimentos">Alimentos</option>
-                  <option value="ferreteria">Ferretería</option>
-                  <option value="otro">Otro</option>
+                  {categoryOptions.length > 0 ? categoryOptions.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  )) : (
+                    <>
+                      <option value="ropa">Ropa</option>
+                      <option value="otro">Otro</option>
+                    </>
+                  )}
                 </select>
               </div>
             </div>
