@@ -6,12 +6,12 @@
 // from real Supabase queries. The AI generates natural language
 // responses FROM the retrieved data.
 
-import { classifyCommerceIntent, extractKeywords } from './intent'
+import { classifyIntent, extractKeywords } from '@/lib/bot/intent-classifier'
 import { retrieveProducts, getProductDetail } from './retrieval'
 import { buildCommerceContext } from './context'
 import { addToCart, getCartItems } from './cart'
 import { createServiceClient } from '@/lib/supabase/service'
-import type { CommerceIntent, CommerceContext, CommerceProduct } from '@/lib/types/commerce.types'
+import type { CommerceContext, CommerceProduct } from '@/lib/types/commerce.types'
 import type { ProductResult } from '@/lib/types/whatsapp.types'
 import type { BotContext } from '@/lib/types/whatsapp.types'
 
@@ -62,7 +62,7 @@ export async function processCommerceMessage(
   action?: { type: string; payload: Record<string, unknown> }
 }> {
   const ctxAny = ctx as Record<string, any>
-  const intent = classifyCommerceIntent(message)
+  const intent = classifyIntent(message)
 
   // Always include store info if available
   const storeInfo = ctxAny.storeInfo as CommerceContext['storePolicies']

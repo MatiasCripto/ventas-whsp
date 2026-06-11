@@ -4,6 +4,7 @@
 
 import { createServiceClient } from '@/lib/supabase/service'
 import { getProductEmoji } from '@/lib/bot/product-emoji-map'
+import { decrypt, encrypt } from '@/lib/crypto/encryption'
 
 interface AiConfig {
   provider: string
@@ -443,17 +444,19 @@ async function loadConfig(orgId?: string): Promise<AiConfig | null> {
     const { data: org } = await sb.from('organizations').select('settings').eq('id', orgId).single()
     const ai = (org?.settings as Record<string, any> | null)?.ai as AiConfig | undefined
     if (ai?.apiKey && ai?.provider) {
+      // Decrypt the API key if it was encrypted (AES-256-GCM with "enc:" prefix)
+      const decryptedKey = decrypt(ai.apiKey)
       // Sanitize API key — strip any non-ASCII chars that may have been stored
-      const cleanKey = ai.apiKey.replace(/[^\x20-\x7E]/g, '')
+      const cleanKey = decryptedKey.replace(/[^\x20-\x7E]/g, '')
       const cleanModel = (ai.model || '').replace(/[^\x20-\x7E\w.-]/g, '')
-      if (cleanKey !== ai.apiKey) {
-        console.log('[AI] sanitized apiKey (had non-ASCII chars, length was', ai.apiKey.length, 'now', cleanKey.length, ')')
-        // Persist the clean key back
+      if (cleanKey !== decryptedKey) {
+        console.log('[AI] sanitized apiKey (had non-ASCII chars, length was', decryptedKey.length, 'now', cleanKey.length, ')')
+        // Persist the clean key back (re-encrypted if needed)
         const sb2 = createServiceClient()
         const { data: org2 } = await sb2.from('organizations').select('settings').eq('id', orgId).single()
         const s = (org2?.settings as Record<string, any>) ?? {}
         await sb2.from('organizations').update({
-          settings: { ...s, ai: { provider: ai.provider, apiKey: cleanKey, model: cleanModel || ai.model } },
+          settings: { ...s, ai: { provider: ai.provider, apiKey: encrypt(cleanKey), model: cleanModel || ai.model } },
         }).eq('id', orgId)
       }
       console.log('[AI] config loaded:', ai.provider, ai.model)

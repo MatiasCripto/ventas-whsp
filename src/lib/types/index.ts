@@ -3,7 +3,7 @@
 // Reused pattern from Clinify, adapted for commerce
 // ============================================================
 
-export type UserRole = 'owner' | 'admin' | 'agent' | 'viewer'
+export type UserRole = 'owner' | 'admin' | 'agent' | 'viewer' | 'superadmin'
 
 export interface OrgSettings {
   businessType?: string
@@ -19,7 +19,7 @@ export interface Organization {
   settings: OrgSettings | Record<string, unknown>
   trial_ends_at: string | null
   trial_used: boolean
-  active?: boolean
+  active: boolean
   created_at: string
 }
 
@@ -44,6 +44,8 @@ export interface Store {
   settings: Record<string, unknown>
   is_active: boolean
   evolution_instance: string | null
+  variant_attr1: string
+  variant_attr2: string
   created_at: string
 }
 
@@ -154,7 +156,6 @@ export interface OrderItem {
   quantity: number
   unit_price: number
   total: number
-  variant_snapshot?: Record<string, unknown>
 }
 
 export interface StorePaymentSettings {

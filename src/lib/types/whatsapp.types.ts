@@ -111,6 +111,14 @@ export type BotIntent =
   | 'catalog'
   | 'human'
   | 'help'
+  // Unified commerce intents (merged from commerce/intent.ts)
+  | 'search_products'
+  | 'get_product'
+  | 'add_to_cart'
+  | 'remove_from_cart'
+  | 'view_cart'
+  | 'apply_coupon'
+  | 'human_handoff'
   | 'unknown'
 
 export interface ProductResult {

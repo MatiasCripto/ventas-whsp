@@ -5,7 +5,7 @@
 
 import { createServiceClient } from '@/lib/supabase/service'
 import type { ProductResult } from '@/lib/types/whatsapp.types'
-import { extractKeywords } from './intent'
+import { extractKeywords } from '@/lib/bot/intent-classifier'
 
 interface RetrievalOptions {
   organizationId: string

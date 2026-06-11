@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Rate limit: 10 jobs/min per workflow
-  const rl = checkRateLimit(`job:${workflow}`, { windowMs: 60_000, maxHits: 10 })
+  const rl = await checkRateLimit(`job:${workflow}`, { windowMs: 60_000, maxHits: 10 })
   if (!rl.allowed) return NextResponse.json({ error: 'Too many jobs' }, { status: 429 })
 
   // Idempotency: check if already executed recently

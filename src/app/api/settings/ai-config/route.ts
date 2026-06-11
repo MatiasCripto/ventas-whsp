@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { requireOrgAccess } from '@/lib/auth/require-org'
+import { encrypt, decrypt, isEncrypted } from '@/lib/crypto/encryption'
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,9 +12,11 @@ export async function GET(req: NextRequest) {
     const sb = createServiceClient()
     const { data: org } = await sb.from('organizations').select('settings').eq('id', orgId).single()
     const ai = (org?.settings as Record<string, any> | null)?.ai ?? null
+    // Decrypt the key for display (masked) — needed for the "••••LAST4" preview
+    const rawKey = ai?.apiKey ? decrypt(ai.apiKey) : ''
     return NextResponse.json({
       provider: ai?.provider ?? '',
-      apiKey: ai?.apiKey ? '••••' + ai.apiKey.slice(-4) : '',
+      apiKey: rawKey ? '••••' + rawKey.slice(-4) : '',
       model: ai?.model ?? '',
     })
   } catch (err) {
@@ -34,8 +37,12 @@ export async function POST(req: NextRequest) {
     const { data: org } = await sb.from('organizations').select('settings').eq('id', orgId).single()
     const settings = (org?.settings as Record<string, any>) ?? {}
 
+    // Encrypt the API key before storing, unless it's already encrypted
+    // (when the UI sends back the masked "••••LAST4" key without changes)
+    const finalKey = isEncrypted(apiKey) ? apiKey : encrypt(apiKey)
+
     await sb.from('organizations').update({
-      settings: { ...settings, ai: { provider, apiKey, model: model || 'gpt-4o' } },
+      settings: { ...settings, ai: { provider, apiKey: finalKey, model: model || 'gpt-4o' } },
     }).eq('id', orgId)
 
     return NextResponse.json({ ok: true })

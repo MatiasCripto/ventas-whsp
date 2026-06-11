@@ -26,22 +26,23 @@ interface AuthContextValue {
 }
 
 function getDevOrg(): Organization {
-  if (typeof window === 'undefined') return { id: 'dev-org', name: 'Mi Tienda Dev', slug: 'mi-tienda-dev', logo_url: null, plan: 'growth', settings: {}, trial_ends_at: null, trial_used: false, created_at: new Date().toISOString() }
+  if (typeof window === 'undefined') return { id: 'dev-org', name: 'Mi Tienda Dev', slug: 'mi-tienda-dev', logo_url: null, plan: 'growth', settings: {}, trial_ends_at: null, trial_used: false, active: true, created_at: new Date().toISOString() }
   return {
     id: 'dev-org', name: localStorage.getItem('ca-dev-org-name') || 'Mi Tienda Dev', slug: 'mi-tienda-dev',
     logo_url: localStorage.getItem('ca-dev-logo'), plan: 'growth', settings: {},
-    trial_ends_at: null, trial_used: false, created_at: new Date().toISOString(),
+    trial_ends_at: null, trial_used: false, active: true, created_at: new Date().toISOString(),
   }
 }
 
 function getDevStore(): Store {
-  if (typeof window === 'undefined') return { id: 'dev-store', organization_id: 'dev-org', name: 'Tienda Dev', logo_url: null, address: null, phone: '+5491123456789', whatsapp_number: '+5491123456789', timezone: 'America/Argentina/Buenos_Aires', settings: {}, is_active: true, evolution_instance: null, created_at: new Date().toISOString() }
+  if (typeof window === 'undefined') return { id: 'dev-store', organization_id: 'dev-org', name: 'Tienda Dev', logo_url: null, address: null, phone: '+5491123456789', whatsapp_number: '+5491123456789', timezone: 'America/Argentina/Buenos_Aires', settings: {}, is_active: true, evolution_instance: null, variant_attr1: 'Talle', variant_attr2: 'Color', created_at: new Date().toISOString() }
   return {
     id: 'dev-store', organization_id: 'dev-org', name: localStorage.getItem('ca-dev-store-name') || 'Tienda Dev',
     logo_url: localStorage.getItem('ca-dev-logo'), address: null, phone: '+5491123456789',
     whatsapp_number: localStorage.getItem('ca-dev-whatsapp') || '+5491123456789',
     timezone: 'America/Argentina/Buenos_Aires', settings: {}, is_active: true,
-    evolution_instance: localStorage.getItem('ca-dev-evolution-instance') || null, created_at: new Date().toISOString(),
+    evolution_instance: localStorage.getItem('ca-dev-evolution-instance') || null,
+    variant_attr1: 'Talle', variant_attr2: 'Color', created_at: new Date().toISOString(),
   }
 }
 

@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { verifySuperadmin } from '@/lib/superadmin/auth'
 import { generateTempPassword, getVariantAttrs } from '@/lib/superadmin/utils'
 import { createInstance } from '@/lib/bot/evolution-client'
+import { encrypt } from '@/lib/crypto/encryption'
 
 export async function GET(req: NextRequest) {
   const auth = await verifySuperadmin(req)
@@ -134,7 +135,7 @@ export async function POST(req: NextRequest) {
     await sb.from('organizations').update({
       settings: {
         ...settings,
-        ai: { provider: ai_provider, apiKey: ai_api_key, model: ai_model },
+        ai: { provider: ai_provider, apiKey: encrypt(ai_api_key), model: ai_model },
         businessType: rubro ?? null,
         attr1Label,
         attr2Label,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { verifySuperadmin } from '@/lib/superadmin/auth'
+import { decrypt } from '@/lib/crypto/encryption'
 
 export async function GET(
   req: NextRequest,
@@ -53,7 +54,7 @@ export async function GET(
       ai_config: ai
         ? {
             provider: ai.provider ?? '',
-            api_key_preview: ai.apiKey ? (ai.apiKey as string).slice(0, 8) + '...' : '',
+            api_key_preview: ai.apiKey ? (decrypt(ai.apiKey) as string).slice(0, 8) + '...' : '',
             model: ai.model ?? '',
           }
         : null,
