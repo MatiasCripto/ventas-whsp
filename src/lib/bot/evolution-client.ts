@@ -143,3 +143,26 @@ export async function deleteInstance(instanceName: string): Promise<boolean> {
     return false
   }
 }
+
+/** Set webhook URL for an existing instance */
+export async function setWebhook(instanceName: string, webhookUrl: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE_URL}/instance/setWebhook/${instanceName}`, {
+      method: 'POST',
+      headers: {
+        apikey: API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        webhook: {
+          url: webhookUrl,
+          enabled: true,
+          events: ['messages.upsert'],
+        },
+      }),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
