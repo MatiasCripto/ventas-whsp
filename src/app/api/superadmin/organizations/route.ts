@@ -105,9 +105,10 @@ export async function POST(req: NextRequest) {
     authUserId = authData.user.id
 
     // Paso 2: Crear organización
+    const orgSlug = org_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'org-' + Date.now()
     const { data: org, error: orgError } = await sb
       .from('organizations')
-      .insert({ name: org_name, active: true })
+      .insert({ name: org_name, slug: orgSlug, active: true })
       .select('id')
       .single()
     if (orgError) throw new Error(`Org error: ${orgError.message}`)
