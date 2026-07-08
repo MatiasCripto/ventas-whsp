@@ -85,7 +85,6 @@ export interface ProductVariant {
   attribute_values: Record<string, string>
   price_override: number | null
   stock: number | null
-  stock_alert_threshold: number | null
   images: string[]
   is_active: boolean
   created_at: string

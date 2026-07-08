@@ -779,10 +779,11 @@ export async function POST(req: NextRequest) {
           console.log(`[PRODUCT_IMAGES] sent ${sent}/${sent + failed} images for ${result.productName ?? 'Producto'}`)
         }
 
-        const confirmMsg = response.message?.trim() ?? `Te mandé las fotos de ${result.productName ?? 'Producto'} 📸 ¿Te interesa alguno?`
-        historyMsgs.push({ role: 'assistant', content: confirmMsg })
-        await saveMessage(conversationId, 'outbound', confirmMsg)
-        await evoSend(phone, confirmMsg)
+        // After all images sent, send follow-up text
+        const followUpText = `¿Te interesa ${result.productName ?? 'este producto'}? Decime si querés agregarlo al pedido 📦`
+        historyMsgs.push({ role: 'assistant', content: followUpText })
+        await saveMessage(conversationId, 'outbound', followUpText)
+        await evoSend(phone, followUpText)
         await updateContext(conversationId, ctx)
         return NextResponse.json({ ok: true })
       } catch (err) {

@@ -159,8 +159,8 @@ const JSON_FORMAT = `RESPONDE SIEMPRE EN JSON SIN NADA MAS:
 ✅ Sacar producto de pedido activo (cuando cliente confirma):
 {"message":"Dale, te lo saco del pedido","action":{"type":"remove_from_order","items":[{"productName":"Gorra Vicera plana"}]}}
 
-✅ Enviar foto del producto (cuando el cliente pide ver fotos/imagene):
-{"message":"Dale, te la mando","action":{"type":"show_product_images","productName":"Remera Oversize"}}
+✅ Enviar foto del producto (cuando el cliente pide ver fotos/imagenes):
+{"message":"","action":{"type":"show_product_images","productName":"Remera Oversize"}}
 
 ⛔ NUNCA pongas "action": null. Si no hay accion, no incluyas el campo action. ⛔
 ⛔ NUNCA generes action.type = "checkout". Solo start_checkout. ⛔

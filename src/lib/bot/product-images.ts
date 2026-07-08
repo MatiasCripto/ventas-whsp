@@ -41,7 +41,7 @@ export function getMimeType(url: string): string {
  * 1. Busca productos por ilike name, filtrados por organization_id e is_active
  * 2. Si hay 0 resultados → retorna vacío
  * 3. Si hay varios resultados → retorna ambiguousMatches con los nombres
- * 4. Si hay 1 resultado → busca imágenes en product_images (orden sort_order, max 6)
+ * 4. Si hay 1 resultado → busca imágenes en product_images (orden sort_order, max 10)
  * 5. Fallback: si product_images no tiene nada, hace una segunda query a products.images[]
  */
 export async function getProductImages(
@@ -89,7 +89,7 @@ export async function getProductImages(
     const altText = matchingVariant.attribute_values
       ? Object.values(matchingVariant.attribute_values).filter(Boolean).join(' / ')
       : product.name
-    images = matchingVariant.images.slice(0, 6).map((url: string) => ({
+    images = matchingVariant.images.slice(0, 10).map((url: string) => ({
       url, alt: `${product.name} - ${altText}`,
     }))
   }
@@ -100,7 +100,7 @@ export async function getProductImages(
       .select('url, alt, sort_order')
       .eq('product_id', product.id)
       .order('sort_order', { ascending: true })
-      .limit(6)
+      .limit(10)
 
     if (productImages?.length) {
       images = productImages.map((img: any) => ({
@@ -112,7 +112,7 @@ export async function getProductImages(
 
   // 5. Fallback: products.images[] (TEXT array directo en la tabla)
   if (images.length === 0 && product.images?.length) {
-    images = product.images.slice(0, 6).map((url: string) => ({
+    images = product.images.slice(0, 10).map((url: string) => ({
       url, alt: product.name,
     }))
   }

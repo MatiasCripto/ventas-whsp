@@ -19,6 +19,7 @@ export default function NewProductPage() {
   const [attributes, setAttributes] = useState<ProductAttributeDef[]>([])
   const [variants, setVariants] = useState<Variant[]>([])
   const [trackStock, setTrackStock] = useState(false)
+  const [stockInitial, setStockInitial] = useState(0)
   const [stockAlertThreshold, setStockAlertThreshold] = useState(5)
   const [form, setForm] = useState({
     name: '', description: '', price: '', category_id: '', tags: '',
@@ -109,14 +110,13 @@ export default function NewProductPage() {
         }
       }
 
-      // Insert variants
+      // Insert variants (or create default variant for stock tracking)
       if (variants.length > 0) {
         const variantRows = variants.map(v => ({
           product_id: productId,
           attribute_values: v.attribute_values,
           price_override: v.price_override,
           stock: trackStock ? (v.stock ?? 0) : null,
-          stock_alert_threshold: trackStock ? stockAlertThreshold : null,
           is_active: v.is_active,
         }))
         const { error: varError } = await sb.from('product_variants').insert(variantRows)
@@ -124,6 +124,20 @@ export default function NewProductPage() {
           await sb.from('products').delete().eq('id', productId)
           setSaving(false)
           return alert('Error al crear variantes: ' + varError.message)
+        }
+      } else if (trackStock) {
+        // No variants defined — create a single default variant with stock
+        const { error: varError } = await sb.from('product_variants').insert({
+          product_id: productId,
+          attribute_values: {},
+          price_override: null,
+          stock: stockInitial,
+          is_active: true,
+        })
+        if (varError) {
+          await sb.from('products').delete().eq('id', productId)
+          setSaving(false)
+          return alert('Error al crear stock: ' + varError.message)
         }
       }
 
@@ -204,15 +218,27 @@ export default function NewProductPage() {
             Controlar stock
           </label>
           {trackStock && (
-            <div>
-              <label className="text-xs font-medium" style={{ color: 'var(--muted)' }}>
-                Alertar cuando stock sea menor a:
-              </label>
-              <input type="number" min={0} value={stockAlertThreshold}
-                onChange={e => setStockAlertThreshold(Number(e.target.value))}
-                className="w-full mt-1 px-3 py-2 rounded-[var(--radius-md)] border text-sm bg-transparent outline-none max-w-[120px]"
-                style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
-              />
+            <div className="flex gap-4">
+              <div>
+                <label className="text-xs font-medium" style={{ color: 'var(--muted)' }}>
+                  Stock inicial
+                </label>
+                <input type="number" min={0} value={stockInitial}
+                  onChange={e => setStockInitial(Math.max(0, Number(e.target.value)))}
+                  className="w-full mt-1 px-3 py-2 rounded-[var(--radius-md)] border text-sm bg-transparent outline-none max-w-[120px]"
+                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium" style={{ color: 'var(--muted)' }}>
+                  Alertar cuando stock sea menor a:
+                </label>
+                <input type="number" min={0} value={stockAlertThreshold}
+                  onChange={e => setStockAlertThreshold(Number(e.target.value))}
+                  className="w-full mt-1 px-3 py-2 rounded-[var(--radius-md)] border text-sm bg-transparent outline-none max-w-[120px]"
+                  style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                />
+              </div>
             </div>
           )}
         </div>
