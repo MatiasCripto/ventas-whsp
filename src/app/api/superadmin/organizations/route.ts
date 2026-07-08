@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { verifySuperadmin } from '@/lib/superadmin/auth'
 import { generateTempPassword, getVariantAttrs } from '@/lib/superadmin/utils'
-import { createInstance } from '@/lib/bot/evolution-client'
+import { createInstance } from '@/lib/evolution/evolution-api'
 import { encrypt } from '@/lib/crypto/encryption'
 
 export async function GET(req: NextRequest) {
@@ -143,8 +143,11 @@ export async function POST(req: NextRequest) {
       },
     }).eq('id', orgId)
 
-    // Paso 5: Crear instancia en Evolution API
-    const evoOk = await createInstance(evolutionInstance)
+    // Paso 5: Crear instancia en Evolution API con webhook
+    const webhookBase = process.env.NEXT_PUBLIC_APP_URL || 'https://ventas24.nexoiarg.com'
+    const webhookUrl = `${webhookBase}/api/webhooks/whatsapp`
+    const evoResult = await createInstance(evolutionInstance, webhookUrl)
+    const evoOk = !!evoResult
     if (!evoOk) {
       console.warn('[SUPERADMIN] Evolution API instance creation failed — continuing without Evolution')
     }
