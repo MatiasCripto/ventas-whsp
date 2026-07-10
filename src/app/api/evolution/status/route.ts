@@ -1,35 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { requireOrgAccess } from '@/lib/auth/require-org'
-import { getConnectionState, fetchInstances } from '@/lib/evolution/evolution-api'
+import { getConnectionState } from '@/lib/evolution/evolution-api'
 
 export async function GET(req: NextRequest) {
   const auth = await requireOrgAccess(req)
   if (!auth.authorized) return auth.response
   const orgId = auth.orgId
 
-  const instanceName = process.env.EVOLUTION_INSTANCE || 'concierge-wpp'
-
-  // Verify the instance belongs to a store in the authenticated org
+  // Load instance name from the store DB record (multi-tenant)
   const sb = createServiceClient()
   const { data: store } = await sb.from('stores')
-    .select('id')
+    .select('evolution_instance')
     .eq('organization_id', orgId)
-    .eq('evolution_instance', instanceName)
+    .eq('is_active', true)
     .maybeSingle()
-  if (!store) {
-    // Don't leak whether the instance exists — just return "closed"
+  if (!store?.evolution_instance) {
     return NextResponse.json({ instance: { state: 'close' } })
   }
+  const instanceName = store.evolution_instance
 
   try {
-    const instances = await fetchInstances()
-    const existing = instances.find((i: any) => i.name === instanceName)
-
-    if (!existing) {
-      return NextResponse.json({ instance: { state: 'close' } })
-    }
-
     const state = await getConnectionState(instanceName)
     return NextResponse.json({ instance: state ?? { state: 'close' } })
   } catch (err) {

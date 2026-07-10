@@ -165,7 +165,7 @@ export default function AnalyticsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Top Products */}
         <div className="card p-5">
-          <h2 className="font-semibold text-sm mb-4">Productos MÃ¡s Vendidos</h2>
+          <h2 className="font-semibold text-sm mb-4">Productos Más Vendidos</h2>
           {summary && summary.topProducts.length > 0 ? (
             <div className="space-y-3">
               {summary.topProducts.map((p, i) => (
@@ -216,7 +216,7 @@ export default function AnalyticsPage() {
                 <span className="text-sm font-bold">{summary.abandoned_carts}</span>
               </div>
               <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
-                <span className="text-sm font-medium">Tasa de conversiÃ³n</span>
+                <span className="text-sm font-medium">Tasa de conversión</span>
                 <span className="text-sm font-bold">{formatPct(summary.conversion_rate)}</span>
               </div>
             </div>
@@ -229,7 +229,7 @@ export default function AnalyticsPage() {
       {/* Daily table */}
       <div className="card overflow-hidden">
         <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
-          <h2 className="font-semibold text-sm">Ãšltimos {DAYS_RANGE} DÃ­as</h2>
+          <h2 className="font-semibold text-sm">Últimos {DAYS_RANGE} Días</h2>
         </div>
         <table className="w-full text-sm">
           <thead>
@@ -238,7 +238,7 @@ export default function AnalyticsPage() {
               <th className="text-right px-4 py-2 font-medium">Ingresos</th>
               <th className="text-right px-4 py-2 font-medium">Pedidos</th>
               <th className="text-right px-4 py-2 font-medium">Nuevos</th>
-              <th className="text-right px-4 py-2 font-medium">ConversiÃ³n</th>
+              <th className="text-right px-4 py-2 font-medium">Conversión</th>
             </tr>
           </thead>
           <tbody>
@@ -248,13 +248,13 @@ export default function AnalyticsPage() {
                 <td className="px-4 py-2 text-right">{formatCurrency(d.total_revenue)}</td>
                 <td className="px-4 py-2 text-right">{d.total_orders}</td>
                 <td className="px-4 py-2 text-right">{d.new_customers}</td>
-                <td className="px-4 py-2 text-right">{d.conversion_rate ? formatPct(d.conversion_rate) : 'â€”'}</td>
+                <td className="px-4 py-2 text-right">{d.conversion_rate ? formatPct(d.conversion_rate) : '—'}</td>
               </tr>
             ))}
             {daily.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--muted)' }}>
-                  Sin datos diarios. EjecutÃ¡ el cron de analytics para ver mÃ©tricas.
+                  Sin datos diarios. Ejecutá el cron de analytics para ver métricas.
                 </td>
               </tr>
             )}

@@ -8,19 +8,17 @@ export async function GET(req: NextRequest) {
   if (!auth.authorized) return auth.response
   const orgId = auth.orgId
 
-  const instanceName = process.env.EVOLUTION_INSTANCE || 'concierge-wpp'
-
-  // Verify the instance belongs to a store in the authenticated org
+  // Load instance name from the store DB record (multi-tenant)
   const sb = createServiceClient()
   const { data: store } = await sb.from('stores')
-    .select('id')
+    .select('evolution_instance')
     .eq('organization_id', orgId)
-    .eq('evolution_instance', instanceName)
+    .eq('is_active', true)
     .maybeSingle()
-  if (!store) {
-    console.warn('[EVO DISCONNECT] instance not found for org:', orgId, 'instance:', instanceName)
-    return NextResponse.json({ error: 'Instancia no encontrada para esta organización' }, { status: 403 })
+  if (!store?.evolution_instance) {
+    return NextResponse.json({ ok: true })
   }
+  const instanceName = store.evolution_instance
 
   try {
     await logoutInstance(instanceName)
