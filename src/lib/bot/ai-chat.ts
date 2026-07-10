@@ -471,7 +471,15 @@ async function loadConfig(orgId?: string): Promise<AiConfig | null> {
       console.log('[AI] config loaded:', ai.provider, ai.model)
       return { ...ai, apiKey: cleanKey, model: cleanModel || ai.model }
     }
-    console.log('[AI] no ai config in org settings')
+    // Fallback to environment variables when no org config exists
+    console.log('[AI] no org config — falling back to env vars')
+    const envProvider = process.env.AI_PROVIDER
+    const envApiKey  = process.env.AI_API_KEY
+    const envModel   = process.env.AI_MODEL
+    if (envProvider && envApiKey) {
+      console.log('[AI] using env fallback:', envProvider, envModel || 'default')
+      return { provider: envProvider, apiKey: envApiKey, model: envModel || 'gpt-4o' }
+    }
   } catch (err) {
     console.error('[AI] loadConfig error:', err)
   }
