@@ -19,19 +19,6 @@ export default function WhatsAppPage() {
   const [error, setError] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
 
-  const fetchQr = useCallback(async () => {
-    try {
-      const res = await fetch('/api/evolution/connect')
-      const data = await res.json()
-      if (data.base64) {
-        setQrBase64(data.base64)
-      }
-      return data
-    } catch {
-      return null
-    }
-  }, [])
-
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch('/api/evolution/status')
@@ -51,11 +38,19 @@ export default function WhatsAppPage() {
     setQrBase64(null)
     setState('connecting')
     try {
-      const data = await fetchQr()
-      if (data?.base64) {
+      // Call connect once — creates instance and returns QR
+      const res = await fetch('/api/evolution/connect')
+      const data = await res.json()
+      if (data.base64) {
         setQrBase64(data.base64)
       }
-      // Poll for QR refresh while connecting
+      if (data.connected) {
+        setState('open')
+        setConnecting(false)
+        return
+      }
+
+      // Poll only status (not QR) until connected or timeout
       let attempts = 0
       const interval = setInterval(async () => {
         const s = await fetchStatus()
@@ -68,17 +63,14 @@ export default function WhatsAppPage() {
         if (attempts > 30) {
           clearInterval(interval)
           setConnecting(false)
-          return
+          setError('Tiempo de espera agotado. Intentá de nuevo.')
         }
-        // Refresh QR every 5s
-        const qr = await fetchQr()
-        if (qr?.base64) setQrBase64(qr.base64)
       }, 5000)
     } catch (err: any) {
       setError(err?.message ?? 'Error al conectar')
       setConnecting(false)
     }
-  }, [fetchQr, fetchStatus])
+  }, [fetchStatus])
 
   const handleDisconnect = useCallback(async () => {
     try {
@@ -95,14 +87,12 @@ export default function WhatsAppPage() {
       const s = await fetchStatus()
       if (s === 'open') {
         setState('open')
-      } else if (s === 'connecting') {
-        await handleConnect()
       } else {
         setState('close')
       }
     }
     init()
-  }, [fetchStatus, handleConnect])
+  }, [fetchStatus])
 
   const sc = STATE_CONFIG[state] ?? STATE_CONFIG.loading
   const IconComponent = sc.icon === 'check' ? CheckCircle2 : sc.icon === 'alert' ? AlertCircle : ScanLine
@@ -155,25 +145,16 @@ export default function WhatsAppPage() {
         )}
 
         {/* Actions */}
-        {state === 'close' && (
-          <button onClick={handleConnect} disabled={connecting}
-            className="flex items-center gap-2 px-4 py-2 rounded-[var(--radius-md)] text-white text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
+        {state === 'close' && !connecting && (
+          <button onClick={handleConnect}
+            className="flex items-center gap-2 px-4 py-2 rounded-[var(--radius-md)] text-white text-sm font-medium transition-opacity hover:opacity-90"
             style={{ background: 'var(--brand)' }}>
-            {connecting ? (
-              <>
-                <RefreshCw size={16} className="animate-spin" />
-                Conectando...
-              </>
-            ) : (
-              <>
-                <Link2 size={16} />
-                Conectar WhatsApp
-              </>
-            )}
+            <Link2 size={16} />
+            Conectar WhatsApp
           </button>
         )}
 
-        {state === 'connecting' && !qrBase64 && (
+        {connecting && !qrBase64 && (
           <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--muted)' }}>
             <RefreshCw size={16} className="animate-spin" />
             Generando QR...

@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { requireOrgAccess } from '@/lib/auth/require-org'
-import { getQrCode } from '@/lib/evolution/evolution-api'
 import { setWebhook } from '@/lib/bot/evolution-client'
 
 const EVO_BASE = process.env.EVOLUTION_API_URL || 'http://localhost:8080'
 const EVO_KEY  = process.env.EVOLUTION_API_KEY  || ''
 
-/** Safe fetch — returns null on non-ok instead of throwing. */
-async function safeGet(path: string): Promise<any> {
+async function evoFetch(path: string, opts?: RequestInit): Promise<any> {
   try {
     const res = await fetch(`${EVO_BASE}${path}`, {
       headers: { apikey: EVO_KEY, 'Content-Type': 'application/json' },
+      ...opts,
     })
     if (!res.ok) return null
     const text = await res.text()
@@ -34,43 +33,52 @@ export async function GET(req: NextRequest) {
     .eq('is_active', true)
     .maybeSingle()
   if (!store?.evolution_instance) {
-    return NextResponse.json({ error: 'No hay instancia de WhatsApp configurada para esta tienda' }, { status: 404 })
+    return NextResponse.json({ error: 'No hay instancia de WhatsApp configurada' }, { status: 404 })
   }
   const instanceName = store.evolution_instance
 
-  try {
-    // 1) Check connection state (safe — returns null on any error)
-    const stateData = await safeGet(`/instance/connectionState/${instanceName}`)
-    const currentState = stateData?.instance?.state
+  // 1) Check current state
+  const stateData = await evoFetch(`/instance/connectionState/${instanceName}`)
+  const currentState = stateData?.instance?.state
 
-    // Already connected
-    if (currentState === 'open') {
-      return NextResponse.json({ connected: true })
-    }
-
-    // 2) Try to get QR from existing instance
-    const qr = await getQrCode(instanceName)
-    if (qr) {
-      return NextResponse.json({ base64: qr, state: 'connecting' })
-    }
-
-    // 3) Instance is connecting but no QR yet — poll will refresh
-    if (currentState === 'connecting') {
-      return NextResponse.json({ base64: null, state: 'connecting' })
-    }
-
-    // 4) Instance doesn't exist / closed / disconnected — create it
-    await fetch(`${EVO_BASE}/instance/create`, {
-      method: 'POST',
-      headers: { apikey: EVO_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instanceName, qrcode: true }),
-    })
-    const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://ventas24.nexoiarg.com'}/api/webhooks/whatsapp`
-    await setWebhook(instanceName, webhookUrl)
-    const freshQr = await getQrCode(instanceName)
-    return NextResponse.json({ base64: freshQr, state: 'connecting' })
-  } catch (err) {
-    console.error('[EVO CONNECT]', err)
-    return NextResponse.json({ error: 'Error al conectar con Evolution API' }, { status: 500 })
+  // Already connected
+  if (currentState === 'open') {
+    return NextResponse.json({ connected: true })
   }
+
+  // 2) If connecting, try to get existing QR
+  if (currentState === 'connecting') {
+    const qr = await evoFetch(`/instance/qrcode/${instanceName}?base64=true`)
+    const base64 = qr?.base64 ?? qr?.qrcode?.base64 ?? null
+    return NextResponse.json({ base64, state: 'connecting' })
+  }
+
+  // 3) Instance is closed/missing — delete + recreate with QR
+  await evoFetch(`/instance/delete/${instanceName}`, { method: 'DELETE' })
+  await new Promise(r => setTimeout(r, 500))
+
+  const createRes = await evoFetch('/instance/create', {
+    method: 'POST',
+    body: JSON.stringify({ instanceName, qrcode: true }),
+  })
+
+  // Configure webhook
+  const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://ventas24.nexoiarg.com'}/api/webhooks/whatsapp`
+  await setWebhook(instanceName, webhookUrl)
+
+  // Return QR from create response or fetch separately
+  const qrBase64 = createRes?.qrcode?.base64 ?? null
+  if (qrBase64) {
+    return NextResponse.json({ base64: qrBase64, state: 'connecting' })
+  }
+
+  // Poll a few times for the QR
+  for (let i = 0; i < 5; i++) {
+    await new Promise(r => setTimeout(r, 1000))
+    const qrData = await evoFetch(`/instance/qrcode/${instanceName}?base64=true`)
+    const b64 = qrData?.base64 ?? qrData?.qrcode?.base64 ?? null
+    if (b64) return NextResponse.json({ base64: b64, state: 'connecting' })
+  }
+
+  return NextResponse.json({ base64: null, state: 'connecting' })
 }
