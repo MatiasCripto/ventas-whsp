@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
 
   const createRes = await evoFetch('/instance/create', {
     method: 'POST',
-    body: JSON.stringify({ instanceName, qrcode: true }),
+    body: JSON.stringify({ instanceName, qrcode: true, integration: 'WHATSAPP-BAILEYS' }),
   })
 
   // Configure webhook

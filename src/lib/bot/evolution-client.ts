@@ -123,7 +123,7 @@ export async function createInstance(instanceName: string): Promise<boolean> {
         apikey: API_KEY,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ instanceName }),
+      body: JSON.stringify({ instanceName, integration: 'WHATSAPP-BAILEYS' }),
     })
     return res.ok
   } catch (err) {
