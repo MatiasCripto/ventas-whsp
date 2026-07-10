@@ -1,8 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { requireOrgAccess } from '@/lib/auth/require-org'
-import { getQrCode, getConnectionState } from '@/lib/evolution/evolution-api'
-import { createInstance as createSimpleInstance, setWebhook } from '@/lib/bot/evolution-client'
+import { getQrCode } from '@/lib/evolution/evolution-api'
+import { setWebhook } from '@/lib/bot/evolution-client'
+
+const EVO_BASE = process.env.EVOLUTION_API_URL || 'http://localhost:8080'
+const EVO_KEY  = process.env.EVOLUTION_API_KEY  || ''
+
+/** Safe fetch — returns null on non-ok instead of throwing. */
+async function safeGet(path: string): Promise<any> {
+  try {
+    const res = await fetch(`${EVO_BASE}${path}`, {
+      headers: { apikey: EVO_KEY, 'Content-Type': 'application/json' },
+    })
+    if (!res.ok) return null
+    const text = await res.text()
+    return text ? JSON.parse(text) : null
+  } catch {
+    return null
+  }
+}
 
 export async function GET(req: NextRequest) {
   const auth = await requireOrgAccess(req)
@@ -22,9 +39,9 @@ export async function GET(req: NextRequest) {
   const instanceName = store.evolution_instance
 
   try {
-    // 1) Check connection state
-    const state = await getConnectionState(instanceName)
-    const currentState = state?.state
+    // 1) Check connection state (safe — returns null on any error)
+    const stateData = await safeGet(`/instance/connectionState/${instanceName}`)
+    const currentState = stateData?.instance?.state
 
     // Already connected
     if (currentState === 'open') {
@@ -37,21 +54,21 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ base64: qr, state: 'connecting' })
     }
 
-    // 3) Instance exists but no QR yet — still connecting, poll will refresh
+    // 3) Instance is connecting but no QR yet — poll will refresh
     if (currentState === 'connecting') {
       return NextResponse.json({ base64: null, state: 'connecting' })
     }
 
-    // 4) Instance is closed/disconnected — recreate it
-    if (currentState === 'close' || !state) {
-      const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://ventas24.nexoiarg.com'}/api/webhooks/whatsapp`
-      await createSimpleInstance(instanceName)
-      await setWebhook(instanceName, webhookUrl)
-      const freshQr = await getQrCode(instanceName)
-      return NextResponse.json({ base64: freshQr, state: 'connecting' })
-    }
-
-    return NextResponse.json({ base64: null, state: 'connecting' })
+    // 4) Instance doesn't exist / closed / disconnected — create it
+    await fetch(`${EVO_BASE}/instance/create`, {
+      method: 'POST',
+      headers: { apikey: EVO_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instanceName, qrcode: true }),
+    })
+    const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://ventas24.nexoiarg.com'}/api/webhooks/whatsapp`
+    await setWebhook(instanceName, webhookUrl)
+    const freshQr = await getQrCode(instanceName)
+    return NextResponse.json({ base64: freshQr, state: 'connecting' })
   } catch (err) {
     console.error('[EVO CONNECT]', err)
     return NextResponse.json({ error: 'Error al conectar con Evolution API' }, { status: 500 })
