@@ -5,6 +5,7 @@
 import { createServiceClient } from '@/lib/supabase/service'
 import { getProductEmoji } from '@/lib/bot/product-emoji-map'
 import { decrypt, encrypt } from '@/lib/crypto/encryption'
+import { logger } from '@/lib/logger'
 
 interface AiConfig {
   provider: string
@@ -445,7 +446,7 @@ async function callGoogle(apiKey: string, model: string, messages: ChatMessage[]
 
 async function loadConfig(orgId?: string): Promise<AiConfig | null> {
   if (!orgId) {
-    console.log('[AI] loadConfig: no orgId')
+    logger.warn('loadConfig: no orgId')
     return null
   }
   try {
@@ -459,7 +460,7 @@ async function loadConfig(orgId?: string): Promise<AiConfig | null> {
       const cleanKey = decryptedKey.replace(/[^\x20-\x7E]/g, '')
       const cleanModel = (ai.model || '').replace(/[^\x20-\x7E\w.-]/g, '')
       if (cleanKey !== decryptedKey) {
-        console.log('[AI] sanitized apiKey (had non-ASCII chars, length was', decryptedKey.length, 'now', cleanKey.length, ')')
+        logger.warn('sanitized apiKey (had non-ASCII chars)', { oldLen: decryptedKey.length, newLen: cleanKey.length })
         // Persist the clean key back (re-encrypted if needed)
         const sb2 = createServiceClient()
         const { data: org2 } = await sb2.from('organizations').select('settings').eq('id', orgId).single()
@@ -468,20 +469,20 @@ async function loadConfig(orgId?: string): Promise<AiConfig | null> {
           settings: { ...s, ai: { provider: ai.provider, apiKey: encrypt(cleanKey), model: cleanModel || ai.model } },
         }).eq('id', orgId)
       }
-      console.log('[AI] config loaded:', ai.provider, ai.model)
+      logger.info('config loaded', { provider: ai.provider, model: ai.model })
       return { ...ai, apiKey: cleanKey, model: cleanModel || ai.model }
     }
     // Fallback to environment variables when no org config exists
-    console.log('[AI] no org config — falling back to env vars')
+    logger.info('no org config — falling back to env vars')
     const envProvider = process.env.AI_PROVIDER
     const envApiKey  = process.env.AI_API_KEY
     const envModel   = process.env.AI_MODEL
     if (envProvider && envApiKey) {
-      console.log('[AI] using env fallback:', envProvider, envModel || 'default')
+      logger.info('using env fallback', { provider: envProvider, model: envModel || 'default' })
       return { provider: envProvider, apiKey: envApiKey, model: envModel || 'gpt-4o' }
     }
   } catch (err) {
-    console.error('[AI] loadConfig error:', err)
+    logger.error('loadConfig error', { err })
   }
   return null
 }
@@ -495,10 +496,10 @@ export async function generateAiResponse(
 ): Promise<AgentResponse | null> {
   const config = await loadConfig(orgId)
   if (!config) {
-    console.log('[AI] no config, skipping AI response')
+    logger.warn('no config, skipping AI response')
     return null
   }
-  console.log('[AI] calling', config.provider, 'model:', config.model)
+  logger.info('calling AI', { provider: config.provider, model: config.model })
 
   const messages: ChatMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }]
   const history = (ctx.history ?? []) as Array<{ role: 'user' | 'assistant'; content: string }>
@@ -519,7 +520,7 @@ export async function generateAiResponse(
       default:          raw = await callOpenAI(config.apiKey, config.model || 'gpt-4o', messages); break
     }
   } catch (err) {
-    console.error('[AI Agent] Error:', err); return null
+    logger.error('AI Agent Error', { err }); return null
   }
   if (!raw) return null
   return parseAgentResponse(raw)

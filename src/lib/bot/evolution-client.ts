@@ -1,3 +1,5 @@
+import { logger } from '@/lib/logger'
+
 // Evolution API client — wraps HTTP calls to the Evolution API instance
 
 const BASE_URL = process.env.EVOLUTION_API_URL ?? 'http://localhost:8080'
@@ -103,12 +105,12 @@ export async function downloadMedia(
       headers: { apikey: API_KEY },
     })
     if (!res.ok) {
-      console.error('[Evolution] downloadMedia error:', res.status)
+      logger.error('Evolution downloadMedia error', { status: res.status })
       return null
     }
     return res.arrayBuffer()
   } catch (err) {
-    console.error('[Evolution] downloadMedia exception:', err)
+    logger.error('Evolution downloadMedia exception', { err })
     return null
   }
 }
@@ -127,7 +129,7 @@ export async function createInstance(instanceName: string): Promise<boolean> {
     })
     return res.ok
   } catch (err) {
-    console.error('[Evolution] createInstance error:', err)
+    logger.error('Evolution createInstance error', { err })
     return false
   }
 }

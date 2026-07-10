@@ -21,6 +21,7 @@ import {
 import { buildProductPresentation } from '@/lib/bot/product-emoji-map'
 import { getStorePaymentSettings, formatPaymentSettings } from '@/lib/bot/payment-service'
 import { recordOrderEvent } from '@/lib/services/order-event.service'
+import { logger } from '@/lib/logger'
 import { validateWebhookPayload } from './validators/payload.validator'
 import { handleMediaMessage } from './handlers/media.handler'
 import type { CheckoutState } from '@/lib/bot/checkout-machine'
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
 
     const { payload, phone, text, pushName } = validated.data
     const data = payload.data as EvolutionMessageData
-    console.log('[WEBHOOK] msg from:', phone, 'text:', text.slice(0, 60))
+    logger.info('msg from', { phone, text: text.slice(0, 60), pushName })
 
 
     // Find org by Evolution instance
@@ -56,10 +57,10 @@ export async function POST(req: NextRequest) {
       .eq('evolution_instance', payload.instance)
       .maybeSingle()
     if (!store) {
-      console.log('[WEBHOOK] unknown instance:', payload.instance)
+      logger.warn('unknown instance', { instance: payload.instance })
       return NextResponse.json({ error: 'Unknown instance' }, { status: 404 })
     }
-    console.log('[WEBHOOK] store:', store.name, 'org:', store.organization_id)
+    logger.info('store resolved', { name: store.name, orgId: store.organization_id })
 
     const orgId = store.organization_id
     const storeId = store.id
@@ -77,7 +78,7 @@ export async function POST(req: NextRequest) {
         .eq('channel_message_id', msgId)
         .maybeSingle()
       if (existingMsg) {
-        console.log('[WEBHOOK] duplicate message, skipping:', msgId)
+        logger.info('duplicate message, skipping', { msgId })
         return NextResponse.json({ ok: true })
       }
     }
@@ -88,8 +89,8 @@ export async function POST(req: NextRequest) {
       .eq('id', orgId)
       .maybeSingle()
     if (!org || org.active === false) {
-      console.log('[WEBHOOK] inactive org — ignoring message:', orgId)
-      await evoSend(phone, `⚠️ ${store.name} se encuentra desactivada por el momento. Para más información, contacte al administrador.`).catch((err) => console.warn('[WEBHOOK] inactive org send failed:', err))
+      logger.info('inactive org — ignoring message', { orgId, store: store.name })
+      await evoSend(phone, `⚠️ ${store.name} se encuentra desactivada por el momento. Para más información, contacte al administrador.`).catch((err) => logger.warn('inactive org send failed', { err }))
       return NextResponse.json({ ok: true })
     }
 
@@ -97,7 +98,7 @@ export async function POST(req: NextRequest) {
     const { conversationId: cid, context: rawCtx, isNew } = await getOrCreateConversation(orgId, storeId, phone, pushName)
     conversationId = cid
     if (!conversationId) {
-      console.log('[WEBHOOK] no conversationId')
+      logger.warn('no conversationId')
       return NextResponse.json({ error: 'No conversation' }, { status: 500 })
     }
     console.log('[WEBHOOK] conv:', conversationId, 'isNew:', isNew)
@@ -903,7 +904,7 @@ export async function POST(req: NextRequest) {
     // Safety check: never send raw JSON or empty message to customer
     let safeMessage = response.message?.trim()
     if (!safeMessage || safeMessage.startsWith('{') || safeMessage.startsWith('[')) {
-      console.log('[WEBHOOK] SAFETY: blocked raw/empty message from leaking: ' + JSON.stringify(safeMessage?.slice(0, 120)))
+      logger.warn('SAFETY: blocked raw/empty message from leaking', { snippet: safeMessage?.slice(0, 120) })
       safeMessage = 'Dale, decime cómo puedo ayudarte.'
     }
     await saveMessage(conversationId, 'outbound', safeMessage)
@@ -912,7 +913,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true })
   } catch (err) {
-    console.error('[WhatsApp Webhook]', err)
+    logger.error('WhatsApp Webhook error', { err })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   } finally {
     if (conversationId) {

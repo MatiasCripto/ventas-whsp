@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
-const nextConfig: NextConfig = {
+const innerConfig: NextConfig = {
   // ── Compression ─────────────────────────────────────────────
   compress: true,
 
@@ -61,4 +62,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(innerConfig);

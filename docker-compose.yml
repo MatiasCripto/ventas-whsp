@@ -21,6 +21,14 @@ services:
     container_name: whsp_postgres
     restart: unless-stopped
     networks: [concierge-net]
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     environment:
       POSTGRES_DB:       evolution
       POSTGRES_USER:     evolution
@@ -41,6 +49,14 @@ services:
     container_name: whsp_redis
     restart: unless-stopped
     networks: [concierge-net]
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
     command: redis-server --requirepass ${REDIS_PASSWORD:-redispass} --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
@@ -66,6 +82,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
     environment:
       SERVER_URL:               ${EVOLUTION_API_URL:-http://localhost:8080}
       # Authentication
