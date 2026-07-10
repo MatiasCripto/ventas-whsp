@@ -1,9 +1,9 @@
 // ── WhatsApp webhook payload validators ──────────────────────
 // HMAC signature verification, rate limiting, and payload parsing.
 //
-// Production:  HMAC is REQUIRED. Missing/invalid signature → 401.
-// Development: HMAC is OPTIONAL. Missing header → warning + allow.
-//              Invalid signature still → 401 (catches real config issues early).
+// HMAC verification: if the signature header IS present, it MUST be valid.
+// Missing header is allowed (Evolution API global webhook doesn't send it).
+// WEBHOOK_SECRET must be configured for when the header is present.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac } from 'node:crypto'
@@ -61,11 +61,8 @@ function verifySignature(rawBody: string, signatureHeader: string | null): { ok:
 
   // Missing signature header
   if (!signatureHeader) {
-    if (IS_PRODUCTION) {
-      return { ok: false, reason: 'missing x-evolution-signature header' }
-    }
-    console.warn('[WEBHOOK] DEV: missing x-evolution-signature header — allowing request')
-    return { ok: true } // dev: warn but allow
+    console.warn('[WEBHOOK] HMAC: missing x-evolution-signature header — allowing request (no signature verification)')
+    return { ok: true }
   }
 
   // Verify HMAC
